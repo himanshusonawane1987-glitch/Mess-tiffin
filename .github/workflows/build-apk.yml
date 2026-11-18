@@ -5,34 +5,30 @@ on:
   push:
     branches: [main]
 
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
       - name: Install Android SDK packages
         run: |
           SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -n 1)
           echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "build-tools;35.0.0"
-
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 9.3.1
-
       - name: Decode binary assets
         run: |
           for f in $(find . -name '*.b64'); do base64 -d "$f" > "${f%.b64}"; rm "$f"; done
           ls app/src/main/res/mipmap-xxxhdpi/ app/src/main/res/font/
-
       - name: Write .env from secrets
         run: |
           cat > .env << 'EOF'
@@ -40,15 +36,13 @@ jobs:
           SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
           EOF
-
       - name: Restore debug keystore
         run: |
-          printf '%s' "${{ secrets.TIFFIN_DEBUG_KEYSTORE_BASE64 }}" | base64 -d > debug.keystore
+          printf '%s' "${{ secrets.TIFFIN_DEBUG_KEYSTORE_BASE64 }}" | base64 -di > debug.keystore
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey > /dev/null && echo KEYSTORE_OK
           ls -la debug.keystore
-
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
