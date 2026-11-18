@@ -9,9 +9,11 @@ import com.example.domain.DailyMarkChoice
 import com.example.domain.DailyMenu
 import com.example.domain.Mess
 import com.example.domain.MessReview
+import com.example.domain.MessUpiDetails
 import com.example.domain.MonthlyBill
 import com.example.domain.Payment
 import com.example.domain.PaymentMethod
+import com.example.domain.PaymentProof
 import com.example.domain.Profile
 import com.example.domain.RegistrationRequest
 import com.example.domain.RenewalRequest
@@ -19,6 +21,7 @@ import com.example.domain.SellerRegistrationResult
 import com.example.domain.Subscription
 import com.example.domain.SubscriptionPlan
 import com.example.domain.SubscriptionStatus
+import com.example.domain.TiffinBusinessLogic
 import com.example.domain.TiffinLeave
 import com.example.domain.TiffinRecord
 import com.example.domain.TiffinStatus
@@ -29,11 +32,13 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.util.UUID
 
 class TiffinRepository(
     private val rest: SupabaseRestClient,
     private val sessionStore: SessionStore,
-    private val realtime: SupabaseRealtimeClient
+    private val realtime: SupabaseRealtimeClient,
+    private val storage: SupabaseStorageClient
 ) {
     private val json = rest.json
 
@@ -845,5 +850,108 @@ class TiffinRepository(
             queryParams = listOf("mess_id" to "eq.$messId", "order" to "created_at.desc"),
             deserializer = ListSerializer(AdminInvitation.serializer())
         )
+    }
+
+    // ==================== SELLER UPI & PAYMENT SCREENSHOT PROOFS ====================
+
+    suspend fun uploadSellerQrImage(messId: String, imageBytes: ByteArray): Result<String> {
+        val objectPath = TiffinBusinessLogic.storagePathForSellerQr(messId, UUID.randomUUID().toString())
+        return storage.uploadImage(
+            bucket = SupabaseStorageClient.PAYMENT_PROOFS_BUCKET,
+            objectPath = objectPath,
+            bytes = imageBytes
+        )
+    }
+
+    suspend fun updateSellerUpiSettings(
+        messId: String,
+        upiId: String?,
+        upiQrPath: String?
+    ): Result<MessUpiDetails> {
+        val params = buildJsonObject {
+            put("p_mess_id", messId)
+            put("p_upi_id", upiId?.trim()?.ifBlank { null })
+            put("p_upi_qr_path", upiQrPath?.trim()?.ifBlank { null })
+        }.toString()
+        return rest.rpc("seller_update_upi_settings", params, MessUpiDetails.serializer())
+    }
+
+    suspend fun getMyMessUpiDetails(messId: String): Result<MessUpiDetails> {
+        val params = buildJsonObject {
+            put("p_mess_id", messId)
+        }.toString()
+        return rest.rpc("get_my_mess_upi_details", params, MessUpiDetails.serializer())
+    }
+
+    suspend fun getSignedStorageUrl(objectPath: String): Result<String> {
+        return storage.createSignedUrl(
+            bucket = SupabaseStorageClient.PAYMENT_PROOFS_BUCKET,
+            objectPath = objectPath
+        )
+    }
+
+    suspend fun uploadCustomerPaymentScreenshot(
+        messId: String,
+        customerId: String,
+        imageBytes: ByteArray
+    ): Result<String> {
+        val objectPath = TiffinBusinessLogic.storagePathForCustomerProof(
+            messId = messId,
+            customerId = customerId,
+            fileId = UUID.randomUUID().toString()
+        )
+        return storage.uploadImage(
+            bucket = SupabaseStorageClient.PAYMENT_PROOFS_BUCKET,
+            objectPath = objectPath,
+            bytes = imageBytes
+        )
+    }
+
+    suspend fun submitPaymentProof(
+        billId: String?,
+        amount: Double,
+        screenshotPath: String
+    ): Result<PaymentProof> {
+        val params = buildJsonObject {
+            put("p_bill_id", billId)
+            put("p_amount", amount)
+            put("p_screenshot_path", screenshotPath.trim())
+        }.toString()
+        return rest.rpc("submit_payment_proof", params, PaymentProof.serializer())
+    }
+
+    suspend fun getCustomerPaymentProofs(customerId: String): Result<List<PaymentProof>> {
+        return rest.select(
+            table = "payment_proofs",
+            queryParams = listOf(
+                "customer_id" to "eq.$customerId",
+                "order" to "created_at.desc"
+            ),
+            deserializer = ListSerializer(PaymentProof.serializer())
+        )
+    }
+
+    suspend fun getMessPaymentProofs(messId: String): Result<List<PaymentProof>> {
+        return rest.select(
+            table = "payment_proofs",
+            queryParams = listOf(
+                "mess_id" to "eq.$messId",
+                "order" to "created_at.desc"
+            ),
+            deserializer = ListSerializer(PaymentProof.serializer())
+        )
+    }
+
+    suspend fun reviewPaymentProof(
+        proofId: String,
+        confirm: Boolean,
+        rejectReason: String? = null
+    ): Result<PaymentProof> {
+        val params = buildJsonObject {
+            put("p_proof_id", proofId)
+            put("p_decision", if (confirm) "confirmed" else "rejected")
+            put("p_reject_reason", rejectReason?.trim()?.ifBlank { null })
+        }.toString()
+        return rest.rpc("review_payment_proof", params, PaymentProof.serializer())
     }
 }

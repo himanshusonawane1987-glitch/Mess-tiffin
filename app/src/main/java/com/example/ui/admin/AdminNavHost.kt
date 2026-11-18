@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -46,6 +47,7 @@ fun AdminShell(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRouteName = backStackEntry?.destination?.route ?: ""
+    val context = LocalContext.current
 
     val tabs = listOf(
         NavTabItem("dashboard", lStr(R.string.admin_nav_dashboard), Icons.Outlined.Dashboard, "admin_tab_dashboard"),
@@ -131,7 +133,9 @@ fun AdminShell(
                         onSelectMonth = viewModel::selectMonth,
                         onGenerateBill = viewModel::generateMonthlyBill,
                         onRecordPayment = viewModel::recordPayment,
-                        onReversePayment = viewModel::reversePayment
+                        onReversePayment = viewModel::reversePayment,
+                        onConfirmPaymentProof = viewModel::confirmPaymentProof,
+                        onRejectPaymentProof = viewModel::rejectPaymentProof
                     )
                 }
                 composable<AdminProfileRoute> {
@@ -142,6 +146,9 @@ fun AdminShell(
                         onUpdateMessSettings = viewModel::updateMessSettings,
                         onRotateCode = viewModel::rotateRegistrationCode,
                         onInviteAdmin = viewModel::inviteAdmin,
+                        onSaveUpiSettings = { upiId, newQrUri ->
+                            viewModel.saveSellerUpiSettings(context, upiId, newQrUri)
+                        },
                         onSignOut = onSignOut
                     )
                 }

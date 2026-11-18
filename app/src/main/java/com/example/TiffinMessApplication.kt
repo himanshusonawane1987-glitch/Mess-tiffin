@@ -5,6 +5,7 @@ import com.example.data.SessionStore
 import com.example.data.SupabaseAuthClient
 import com.example.data.SupabaseRealtimeClient
 import com.example.data.SupabaseRestClient
+import com.example.data.SupabaseStorageClient
 import com.example.data.TiffinRepository
 import com.example.domain.AppLanguage
 import com.example.ui.theme.AppStrings
@@ -38,7 +39,8 @@ class AppContainer(application: Application) {
     val authClient = SupabaseAuthClient(httpClient, sessionStore, json)
     val restClient = SupabaseRestClient(httpClient, authClient, json)
     val realtimeClient = SupabaseRealtimeClient(httpClient, authClient)
-    val repository = TiffinRepository(restClient, sessionStore, realtimeClient)
+    val storageClient = SupabaseStorageClient(httpClient, authClient, json)
+    val repository = TiffinRepository(restClient, sessionStore, realtimeClient, storageClient)
 
     val activeLanguage = MutableStateFlow(AppLanguage.DEFAULT)
     val appStrings = AppStrings(application) { activeLanguage.value }

@@ -1,9 +1,12 @@
 package com.example.ui.admin
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.R
+import com.example.data.ImageUploadHelper
 import com.example.data.TiffinRepository
 import com.example.ui.theme.AppStrings
 import com.example.domain.AdminCustomerMarkStatus
@@ -18,6 +21,8 @@ import com.example.domain.Mess
 import com.example.domain.MonthlyBill
 import com.example.domain.Payment
 import com.example.domain.PaymentMethod
+import com.example.domain.PaymentProof
+import com.example.domain.PaymentProofStatus
 import com.example.domain.Profile
 import com.example.domain.RegistrationRequest
 import com.example.domain.RenewalRequest
@@ -59,8 +64,13 @@ data class AdminUiState(
     val menus: List<DailyMenu> = emptyList(),
     val bills: List<MonthlyBill> = emptyList(),
     val payments: List<Payment> = emptyList(),
+    val paymentProofs: List<PaymentProof> = emptyList(),
+    val upiQrSignedUrl: String? = null,
+    val proofSignedUrls: Map<String, String> = emptyMap(),
     val adminInvitations: List<AdminInvitation> = emptyList()
 ) {
+    val pendingPaymentProofs: List<PaymentProof>
+        get() = paymentProofs.filter { it.status == PaymentProofStatus.PENDING }
     val activeCustomers: List<CustomerProfile>
         get() = customers.filter { it.customerStatus.name == "ACTIVE" }
 
@@ -168,7 +178,9 @@ class AdminViewModel(
                     "daily_menus",
                     "monthly_bills",
                     "customer_daily_marks",
-                    "tiffin_leaves"
+                    "tiffin_leaves",
+                    "payment_proofs",
+                    "payments"
                 )
             ).collect {
                 refreshAll(silent = true)
@@ -198,13 +210,38 @@ class AdminViewModel(
             val menusRes = repository.getAllMessMenus(messId)
             val billsRes = repository.getMessBills(messId)
             val paymentsRes = repository.getMessPayments(messId)
+            val proofsRes = repository.getMessPaymentProofs(messId)
+            val upiRes = repository.getMyMessUpiDetails(messId)
             val invitesRes = if (state.isOwner) repository.getAdminInvitations(messId) else Result.success(emptyList())
 
             val firstErr = listOf(customersRes, dailyTiffinsRes, menusRes, billsRes)
                 .firstOrNull { it.isFailure }?.exceptionOrNull()?.message
 
+            val upiDetails = upiRes.getOrNull()
+            val refreshedMess = if (upiDetails != null) {
+                state.mess.copy(upiId = upiDetails.upiId, upiQrPath = upiDetails.upiQrPath)
+            } else {
+                state.mess
+            }
+            val qrSignedUrl = if (!refreshedMess.upiQrPath.isNullOrBlank()) {
+                repository.getSignedStorageUrl(refreshedMess.upiQrPath).getOrNull() ?: state.upiQrSignedUrl
+            } else {
+                null
+            }
+
+            val proofs = proofsRes.getOrDefault(state.paymentProofs)
+            val updatedProofUrls = state.proofSignedUrls.toMutableMap()
+            proofs.take(20).forEach { proof ->
+                if (proof.screenshotPath.isNotBlank() && !updatedProofUrls.containsKey(proof.screenshotPath)) {
+                    repository.getSignedStorageUrl(proof.screenshotPath).onSuccess { url ->
+                        updatedProofUrls[proof.screenshotPath] = url
+                    }
+                }
+            }
+
             _uiState.update {
                 it.copy(
+                    mess = refreshedMess,
                     isLoading = false,
                     errorMessage = firstErr,
                     customers = customersRes.getOrDefault(state.customers),
@@ -220,6 +257,9 @@ class AdminViewModel(
                     menus = menusRes.getOrDefault(state.menus),
                     bills = billsRes.getOrDefault(state.bills),
                     payments = paymentsRes.getOrDefault(state.payments),
+                    paymentProofs = proofs,
+                    upiQrSignedUrl = qrSignedUrl,
+                    proofSignedUrls = updatedProofUrls,
                     adminInvitations = invitesRes.getOrDefault(state.adminInvitations)
                 )
             }
@@ -512,6 +552,88 @@ class AdminViewModel(
     fun inviteAdmin(email: String) {
         runAction(str(R.string.msg_admin_invited, email).ifBlank { "Admin invitation created for $email." }) {
             repository.ownerInviteAdmin(_uiState.value.mess.id, email)
+        }
+    }
+
+    fun saveSellerUpiSettings(context: Context, upiIdInput: String, newQrUri: Uri?) {
+        val trimmedUpi = upiIdInput.trim()
+        if (trimmedUpi.isNotEmpty() && !TiffinBusinessLogic.isValidUpiId(trimmedUpi)) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = str(R.string.invalid_upi_id_err)
+                        .ifBlank { "Enter a valid UPI ID (e.g. name@okhdfcbank)." }
+                )
+            }
+            return
+        }
+        viewModelScope.launch {
+            val state = _uiState.value
+            _uiState.update { it.copy(isActionBusy = true, errorMessage = null, successMessage = null) }
+
+            val uploadedQrPath = if (newQrUri != null) {
+                val bytes = ImageUploadHelper.readCompressedJpeg(context, newQrUri).getOrElse {
+                    _uiState.update { s ->
+                        s.copy(
+                            isActionBusy = false,
+                            errorMessage = str(R.string.err_pick_screenshot_failed)
+                                .ifBlank { "Could not read selected image. Please try another image." }
+                        )
+                    }
+                    return@launch
+                }
+                repository.uploadSellerQrImage(state.mess.id, bytes).getOrElse { err ->
+                    _uiState.update { s ->
+                        s.copy(
+                            isActionBusy = false,
+                            errorMessage = err.message ?: str(R.string.err_update_failed).ifBlank { "Update failed." }
+                        )
+                    }
+                    return@launch
+                }
+            } else {
+                state.mess.upiQrPath
+            }
+
+            repository.updateSellerUpiSettings(
+                messId = state.mess.id,
+                upiId = trimmedUpi.ifBlank { null },
+                upiQrPath = uploadedQrPath
+            ).fold(
+                onSuccess = { details ->
+                    val signedUrl = details.upiQrPath?.let { path ->
+                        repository.getSignedStorageUrl(path).getOrNull()
+                    }
+                    _uiState.update { s ->
+                        s.copy(
+                            isActionBusy = false,
+                            mess = s.mess.copy(upiId = details.upiId, upiQrPath = details.upiQrPath),
+                            upiQrSignedUrl = signedUrl ?: s.upiQrSignedUrl,
+                            successMessage = str(R.string.msg_payment_settings_saved)
+                                .ifBlank { "UPI payment settings saved." }
+                        )
+                    }
+                },
+                onFailure = { err ->
+                    _uiState.update {
+                        it.copy(
+                            isActionBusy = false,
+                            errorMessage = err.message ?: str(R.string.err_update_failed).ifBlank { "Update failed." }
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun confirmPaymentProof(proofId: String) {
+        runAction(str(R.string.msg_proof_confirmed).ifBlank { "Payment confirmed and bill updated." }) {
+            repository.reviewPaymentProof(proofId = proofId, confirm = true, rejectReason = null)
+        }
+    }
+
+    fun rejectPaymentProof(proofId: String, reason: String?) {
+        runAction(str(R.string.msg_proof_rejected).ifBlank { "Payment proof rejected." }) {
+            repository.reviewPaymentProof(proofId = proofId, confirm = false, rejectReason = reason)
         }
     }
 

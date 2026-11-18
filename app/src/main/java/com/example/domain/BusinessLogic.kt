@@ -620,4 +620,130 @@ object TiffinBusinessLogic {
             wantedTodayAmount = wantedAmount
         )
     }
+
+    // ==================== SELLER UPI & PAYMENT PROOF LOGIC ====================
+
+    private val upiIdRegex = Regex("^[a-zA-Z0-9._-]{2,}@[a-zA-Z0-9]{2,}$")
+
+    fun isValidUpiId(upiId: String): Boolean {
+        return upiIdRegex.matches(upiId.trim())
+    }
+
+    fun storagePathForSellerQr(messId: String, fileId: String): String {
+        return "$messId/qr/${fileId.trim()}.jpg"
+    }
+
+    fun storagePathForCustomerProof(messId: String, customerId: String, fileId: String): String {
+        return "$messId/proofs/$customerId/${fileId.trim()}.jpg"
+    }
+
+    fun latestProofForBill(billId: String, proofs: List<PaymentProof>): PaymentProof? {
+        return proofs
+            .filter { it.billId == billId }
+            .maxByOrNull { it.createdAt.orEmpty() }
+    }
+
+    fun buildPaymentProofDraft(
+        customer: CustomerProfile,
+        activeMessId: String,
+        bill: MonthlyBill,
+        amount: Double,
+        screenshotPath: String,
+        proofId: String = "pending"
+    ): Result<PaymentProof> {
+        if (customer.customerStatus != AccountStatus.ACTIVE) {
+            return Result.failure(IllegalStateException("Active customer membership required."))
+        }
+        if (customer.messId != activeMessId) {
+            return Result.failure(IllegalStateException("Customer does not belong to this mess."))
+        }
+        if (bill.messId != customer.messId || bill.customerId != customer.id) {
+            return Result.failure(IllegalStateException("Unauthorized: cannot submit payment proof for another mess or customer."))
+        }
+        if (bill.balanceDue <= 0.009) {
+            return Result.failure(IllegalStateException("This bill is already paid."))
+        }
+        if (amount <= 0.0 || amount > bill.balanceDue + 0.009) {
+            return Result.failure(IllegalStateException("Payment proof amount must be between ₹1 and remaining due."))
+        }
+        val cleanedPath = screenshotPath.trim()
+        if (cleanedPath.isBlank() || !cleanedPath.startsWith("${customer.messId}/proofs/${customer.id}/")) {
+            return Result.failure(IllegalStateException("Invalid screenshot storage path."))
+        }
+        return Result.success(
+            PaymentProof(
+                id = proofId,
+                messId = bill.messId,
+                customerId = customer.id,
+                billId = bill.id,
+                amount = amount,
+                screenshotPath = cleanedPath,
+                status = PaymentProofStatus.PENDING
+            )
+        )
+    }
+
+    fun applyPaymentProofReview(
+        proof: PaymentProof,
+        bill: MonthlyBill,
+        existingBillPayments: List<Payment>,
+        decision: PaymentProofStatus,
+        rejectReason: String?,
+        reviewerAdminId: String,
+        reviewerMessId: String,
+        todayInMessZone: LocalDate
+    ): Result<Pair<PaymentProof, MonthlyBill>> {
+        if (reviewerMessId != proof.messId || bill.messId != proof.messId) {
+            return Result.failure(IllegalStateException("Unauthorized: proof belongs to a different mess."))
+        }
+        if (proof.status != PaymentProofStatus.PENDING) {
+            return Result.failure(IllegalStateException("Payment proof has already been reviewed."))
+        }
+        if (decision == PaymentProofStatus.PENDING) {
+            return Result.failure(IllegalArgumentException("Review decision must be confirmed or rejected."))
+        }
+
+        if (decision == PaymentProofStatus.REJECTED) {
+            val updatedProof = proof.copy(
+                status = PaymentProofStatus.REJECTED,
+                rejectReason = rejectReason?.trim()?.ifBlank { null },
+                reviewedBy = reviewerAdminId
+            )
+            return Result.success(updatedProof to bill)
+        }
+
+        // CONFIRMED: record UPI payment & recompute bill totals without altering unpaid bills before confirmation
+        val confirmedPayment = Payment(
+            id = "pay_${proof.id}",
+            messId = bill.messId,
+            customerId = bill.customerId,
+            billId = bill.id,
+            amount = proof.amount,
+            paymentMethod = PaymentMethod.UPI,
+            paymentDate = todayInMessZone.toString(),
+            referenceNote = "UPI Proof #${proof.id.take(8)}",
+            recordedBy = reviewerAdminId,
+            status = PaymentStatus.CONFIRMED
+        )
+        val computation = calculateMonthlyBillTotals(
+            subscriptionCharge = bill.subscriptionCharge,
+            extraTiffinCharge = bill.extraTiffinCharge,
+            previousBalance = bill.previousBalance,
+            discountAmount = bill.discountAmount,
+            payments = existingBillPayments + confirmedPayment,
+            dueDateIso = bill.dueDate,
+            todayInMessZone = todayInMessZone
+        )
+        val updatedBill = bill.copy(
+            amountPaid = computation.amountPaid,
+            balanceDue = computation.balanceDue,
+            status = computation.status
+        )
+        val updatedProof = proof.copy(
+            status = PaymentProofStatus.CONFIRMED,
+            rejectReason = null,
+            reviewedBy = reviewerAdminId
+        )
+        return Result.success(updatedProof to updatedBill)
+    }
 }

@@ -563,4 +563,56 @@
     <string name="msg_code_updated">मेस जॉइन कोड बदल गया।</string>
     <string name="msg_admin_invited">%1$s के लिए एडमिन निमंत्रण बन गया।</string>
     <string name="err_operation_failed">कार्य पूरा नहीं हो सका।</string>
+
+    <!-- Seller UPI Settings & Customer Payment Screenshot Proofs -->
+    <string name="payment_settings_title">पेमेंट सेटिंग्स (UPI और QR)</string>
+    <string name="payment_settings_sub">अपना UPI ID और QR कोड जोड़ें ताकि आपके ग्राहक आसानी से बिल भर सकें।</string>
+    <string name="upi_id_label">UPI ID (जैसे name@okhdfcbank)</string>
+    <string name="invalid_upi_id_err">सही UPI ID दर्ज करें (जैसे name@okhdfcbank)।</string>
+    <string name="upi_qr_label">UPI QR कोड</string>
+    <string name="upi_qr_not_set">अभी कोई QR फोटो अपलोड नहीं है</string>
+    <string name="upi_qr_ready">QR कोड सेव है (सिर्फ आपके सक्रिय ग्राहकों को दिखेगा)</string>
+    <string name="upi_qr_selected_pending">नया QR फोटो चुना गया — पेमेंट सेटिंग्स सेव करें पर टैप करें</string>
+    <string name="upload_qr_btn">QR फोटो चुनें</string>
+    <string name="change_qr_btn">QR फोटो बदलें</string>
+    <string name="save_payment_settings_btn">पेमेंट सेटिंग्स सेव करें</string>
+    <string name="msg_payment_settings_saved">UPI पेमेंट सेटिंग्स सेव हो गईं।</string>
+    <string name="upi_visibility_note">सिर्फ इस मेस के सक्रिय ग्राहकों को दिखाई देगा।</string>
+
+    <string name="pay_via_upi_title">UPI से पेमेंट करें</string>
+    <string name="seller_upi_id_label">विक्रेता की UPI ID</string>
+    <string name="tap_to_copy">कॉपी करने के लिए टैप करें</string>
+    <string name="upi_id_copied">UPI ID कॉपी हो गई: %1$s</string>
+    <string name="amount_to_pay_label">भुगतान राशि: %1$s</string>
+    <string name="seller_upi_not_configured">विक्रेता ने अभी UPI ID या QR नहीं जोड़ा है। पेमेंट भेजने से पहले पूछ लें।</string>
+    <string name="send_payment_screenshot_btn">पेमेंट स्क्रीनशॉट भेजें</string>
+    <string name="submit_proof_dialog_title">पेमेंट प्रूफ भेजें</string>
+    <string name="submit_proof_dialog_sub">UPI ऐप से पेमेंट कर दिया? राशि जांचें और स्क्रीनशॉट भेजें।</string>
+    <string name="submit_proof_btn">प्रूफ भेजें</string>
+    <string name="proof_sent_waiting">पेमेंट प्रूफ भेज दिया गया — विक्रेता की पुष्टि का इंतज़ार है</string>
+    <string name="proof_status_pending">प्रतीक्षा में</string>
+    <string name="proof_status_confirmed">पुष्ट</string>
+    <string name="proof_status_rejected">अस्वीकृत</string>
+    <string name="proof_rejected_reason">विक्रेता का नोट: %1$s</string>
+    <string name="msg_payment_proof_sent">पेमेंट प्रूफ भेज दिया गया! विक्रेता की पुष्टि के बाद बिल अपडेट होगा।</string>
+    <string name="err_pick_screenshot_failed">चयनित फोटो पढ़ा नहीं जा सका। कृपया दूसरा स्क्रीनशॉट चुनें।</string>
+    <string name="err_invalid_proof_amount">₹1 से बकाया राशि के बीच सही रकम दर्ज करें।</string>
+    <string name="proof_submitted_amount_line">भेजा गया %1$s • %2$s</string>
+    <string name="seller_qr_cd">विक्रेता का UPI QR कोड</string>
+    <string name="payment_screenshot_cd">पेमेंट स्क्रीनशॉट</string>
+
+    <string name="payment_proofs_title">पेमेंट प्रूफ</string>
+    <string name="payment_proofs_pending_count">%1$d प्रतीक्षारत</string>
+    <string name="no_pending_proofs">ग्राहकों के कोई प्रतीक्षारत पेमेंट प्रूफ नहीं हैं।</string>
+    <string name="tap_to_view_full">बड़ा देखने के लिए फोटो पर टैप करें</string>
+    <string name="submitted_at_label">भेजा गया: %1$s</string>
+    <string name="confirm_payment_btn">पेमेंट कन्फर्म करें</string>
+    <string name="reject_proof_btn">अस्वीकार करें</string>
+    <string name="reject_proof_dialog_title">पेमेंट प्रूफ अस्वीकार करें</string>
+    <string name="reject_proof_reason_label">ग्राहक के लिए कारण (वैकल्पिक)</string>
+    <string name="confirm_reject_btn">अस्वीकार करें</string>
+    <string name="msg_proof_confirmed">पेमेंट कन्फर्म हो गया और बिल अपडेट हो गया।</string>
+    <string name="msg_proof_rejected">पेमेंट प्रूफ अस्वीकार कर दिया गया।</string>
+    <string name="bill_month_label">बिल: %1$s</string>
+    <string name="close_preview_btn">बंद करें</string>
 </resources>

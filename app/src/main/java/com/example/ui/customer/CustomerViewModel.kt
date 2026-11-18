@@ -1,10 +1,12 @@
 package com.example.ui.customer
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.R
+import com.example.data.ImageUploadHelper
 import com.example.data.LocationHelper
 import com.example.data.TiffinRepository
 import com.example.ui.theme.AppStrings
@@ -18,6 +20,7 @@ import com.example.domain.Mess
 import com.example.domain.MessReview
 import com.example.domain.MonthlyBill
 import com.example.domain.Payment
+import com.example.domain.PaymentProof
 import com.example.domain.Profile
 import com.example.domain.RenewalRequest
 import com.example.domain.Subscription
@@ -58,6 +61,9 @@ data class CustomerUiState(
     val bills: List<MonthlyBill> = emptyList(),
     val currentMonthBill: MonthlyBill? = null,
     val payments: List<Payment> = emptyList(),
+    val paymentProofs: List<PaymentProof> = emptyList(),
+    val upiQrSignedUrl: String? = null,
+    val proofSignedUrls: Map<String, String> = emptyMap(),
     val locationBannerDismissed: Boolean = false,
     val discoveryMesses: List<DiscoverableMess> = emptyList(),
     val discoveryAreaFilter: String = "",
@@ -122,7 +128,15 @@ class CustomerViewModel(
             val messId = _uiState.value.mess.id
             repository.observeMessRealtime(
                 messId = messId,
-                tables = listOf("daily_menus", "tiffin_records", "monthly_bills", "customer_daily_marks", "tiffin_leaves")
+                tables = listOf(
+                    "daily_menus",
+                    "tiffin_records",
+                    "monthly_bills",
+                    "customer_daily_marks",
+                    "tiffin_leaves",
+                    "payment_proofs",
+                    "payments"
+                )
             ).collect {
                 refreshAll(silent = true)
             }
@@ -160,6 +174,8 @@ class CustomerViewModel(
             val renewalsRes = repository.getCustomerRenewalRequests(state.customer.id)
             val billsRes = repository.getCustomerBills(state.customer.id)
             val paymentsRes = repository.getCustomerPayments(state.customer.id)
+            val proofsRes = repository.getCustomerPaymentProofs(state.customer.id)
+            val upiRes = repository.getMyMessUpiDetails(state.mess.id)
 
             val firstError = listOf(tiffinsRes, menusRes, subsRes, billsRes, paymentsRes)
                 .firstOrNull { it.isFailure }?.exceptionOrNull()?.message
@@ -180,9 +196,33 @@ class CustomerViewModel(
             )
             val menus = menusRes.getOrDefault(state.publishedMenus)
             val bills = billsRes.getOrDefault(state.bills)
+            val proofs = proofsRes.getOrDefault(state.paymentProofs)
+            val upiDetails = upiRes.getOrNull()
+            val refreshedMess = if (upiDetails != null) {
+                state.mess.copy(upiId = upiDetails.upiId, upiQrPath = upiDetails.upiQrPath)
+            } else {
+                state.mess
+            }
+
+            val qrPath = refreshedMess.upiQrPath
+            val qrSignedUrl = if (!qrPath.isNullOrBlank()) {
+                repository.getSignedStorageUrl(qrPath).getOrNull() ?: state.upiQrSignedUrl
+            } else {
+                null
+            }
+
+            val updatedProofUrls = state.proofSignedUrls.toMutableMap()
+            proofs.take(10).forEach { proof ->
+                if (proof.screenshotPath.isNotBlank() && !updatedProofUrls.containsKey(proof.screenshotPath)) {
+                    repository.getSignedStorageUrl(proof.screenshotPath).onSuccess { url ->
+                        updatedProofUrls[proof.screenshotPath] = url
+                    }
+                }
+            }
 
             _uiState.update {
                 it.copy(
+                    mess = refreshedMess,
                     isLoading = false,
                     errorMessage = firstError,
                     todayTiffins = todayRes.getOrDefault(state.todayTiffins),
@@ -199,9 +239,105 @@ class CustomerViewModel(
                     renewalRequests = renewalsRes.getOrDefault(state.renewalRequests),
                     bills = bills,
                     currentMonthBill = bills.firstOrNull { b -> b.billingMonth == currentMonthStart } ?: bills.firstOrNull(),
-                    payments = paymentsRes.getOrDefault(state.payments)
+                    payments = paymentsRes.getOrDefault(state.payments),
+                    paymentProofs = proofs,
+                    upiQrSignedUrl = qrSignedUrl,
+                    proofSignedUrls = updatedProofUrls
                 )
             }
+        }
+    }
+
+    fun submitPaymentProof(
+        context: Context,
+        bill: MonthlyBill,
+        amountInput: String,
+        screenshotUri: Uri
+    ) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val amount = amountInput.trim().toDoubleOrNull()
+            if (amount == null || amount <= 0.0 || amount > bill.balanceDue + 0.009) {
+                _uiState.update {
+                    it.copy(
+                        errorMessage = str(R.string.err_invalid_proof_amount)
+                            .ifBlank { "Enter a valid amount between ₹1 and remaining balance." }
+                    )
+                }
+                return@launch
+            }
+            _uiState.update { it.copy(isActionBusy = true, errorMessage = null, successMessage = null) }
+            val bytes = ImageUploadHelper.readCompressedJpeg(context, screenshotUri).getOrElse {
+                _uiState.update { s ->
+                    s.copy(
+                        isActionBusy = false,
+                        errorMessage = str(R.string.err_pick_screenshot_failed)
+                            .ifBlank { "Could not read selected image. Please try another screenshot." }
+                    )
+                }
+                return@launch
+            }
+            val path = repository.uploadCustomerPaymentScreenshot(
+                messId = state.mess.id,
+                customerId = state.customer.id,
+                imageBytes = bytes
+            ).getOrElse { err ->
+                _uiState.update {
+                    it.copy(
+                        isActionBusy = false,
+                        errorMessage = err.message ?: str(R.string.err_operation_failed).ifBlank { "Operation failed." }
+                    )
+                }
+                return@launch
+            }
+            val draftCheck = TiffinBusinessLogic.buildPaymentProofDraft(
+                customer = state.customer,
+                activeMessId = state.mess.id,
+                bill = bill,
+                amount = amount,
+                screenshotPath = path
+            )
+            if (draftCheck.isFailure) {
+                _uiState.update {
+                    it.copy(
+                        isActionBusy = false,
+                        errorMessage = draftCheck.exceptionOrNull()?.message
+                    )
+                }
+                return@launch
+            }
+            repository.submitPaymentProof(
+                billId = bill.id,
+                amount = amount,
+                screenshotPath = path
+            ).fold(
+                onSuccess = { createdProof ->
+                    val signedUrl = repository.getSignedStorageUrl(createdProof.screenshotPath).getOrNull()
+                    _uiState.update { s ->
+                        val urls = if (signedUrl != null) {
+                            s.proofSignedUrls + (createdProof.screenshotPath to signedUrl)
+                        } else {
+                            s.proofSignedUrls
+                        }
+                        s.copy(
+                            isActionBusy = false,
+                            paymentProofs = listOf(createdProof) + s.paymentProofs.filterNot { it.id == createdProof.id },
+                            proofSignedUrls = urls,
+                            successMessage = str(R.string.msg_payment_proof_sent)
+                                .ifBlank { "Payment proof sent! Your bill will update once the seller confirms." }
+                        )
+                    }
+                    refreshAll(silent = true)
+                },
+                onFailure = { err ->
+                    _uiState.update {
+                        it.copy(
+                            isActionBusy = false,
+                            errorMessage = err.message ?: str(R.string.err_operation_failed).ifBlank { "Operation failed." }
+                        )
+                    }
+                }
+            )
         }
     }
 

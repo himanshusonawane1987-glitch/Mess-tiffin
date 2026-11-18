@@ -141,6 +141,8 @@ data class Mess(
     @SerialName("avg_rating") val avgRating: Double = 0.0,
     @SerialName("rating_count") val ratingCount: Int = 0,
     @SerialName("daily_mark_cutoff_time") val dailyMarkCutoffTime: String = "10:00",
+    @SerialName("upi_id") val upiId: String? = null,
+    @SerialName("upi_qr_path") val upiQrPath: String? = null,
     val timezone: String = "Asia/Kolkata",
     val currency: String = "INR",
     @SerialName("meal_slots") val mealSlots: List<String> = listOf("lunch", "dinner"),
@@ -408,3 +410,32 @@ data class AdminDayTotals(
     val deliveredTodayAmount: Double = 0.0,
     val wantedTodayAmount: Double = 0.0
 )
+
+@Serializable
+data class MessUpiDetails(
+    @SerialName("upi_id") val upiId: String? = null,
+    @SerialName("upi_qr_path") val upiQrPath: String? = null
+)
+
+@Serializable
+enum class PaymentProofStatus(val dbValue: String) {
+    @SerialName("pending") PENDING("pending"),
+    @SerialName("confirmed") CONFIRMED("confirmed"),
+    @SerialName("rejected") REJECTED("rejected")
+}
+
+@Serializable
+data class PaymentProof(
+    val id: String,
+    @SerialName("mess_id") val messId: String,
+    @SerialName("customer_id") val customerId: String,
+    @SerialName("bill_id") val billId: String? = null,
+    val amount: Double,
+    @SerialName("screenshot_path") val screenshotPath: String,
+    val status: PaymentProofStatus = PaymentProofStatus.PENDING,
+    @SerialName("reject_reason") val rejectReason: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("reviewed_at") val reviewedAt: String? = null,
+    @SerialName("reviewed_by") val reviewedBy: String? = null
+)
+

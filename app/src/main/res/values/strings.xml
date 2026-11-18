@@ -563,4 +563,56 @@
     <string name="msg_code_updated">Mess registration code updated.</string>
     <string name="msg_admin_invited">Admin invitation created for %1$s.</string>
     <string name="err_operation_failed">Operation failed.</string>
+
+    <!-- Seller UPI Settings & Customer Payment Screenshot Proofs -->
+    <string name="payment_settings_title">Payment Settings (UPI &amp; QR)</string>
+    <string name="payment_settings_sub">Add your UPI ID and QR code so active customers can pay bills easily.</string>
+    <string name="upi_id_label">UPI ID (e.g. name@okhdfcbank)</string>
+    <string name="invalid_upi_id_err">Enter a valid UPI ID (e.g. name@okhdfcbank).</string>
+    <string name="upi_qr_label">UPI QR Code</string>
+    <string name="upi_qr_not_set">No QR image uploaded yet</string>
+    <string name="upi_qr_ready">QR code saved (visible only to your active customers)</string>
+    <string name="upi_qr_selected_pending">New QR image selected — tap Save Payment Settings</string>
+    <string name="upload_qr_btn">Upload QR Photo</string>
+    <string name="change_qr_btn">Change QR Photo</string>
+    <string name="save_payment_settings_btn">Save Payment Settings</string>
+    <string name="msg_payment_settings_saved">UPI payment settings saved.</string>
+    <string name="upi_visibility_note">Shown only to active customers of this mess.</string>
+
+    <string name="pay_via_upi_title">Pay via UPI</string>
+    <string name="seller_upi_id_label">Seller UPI ID</string>
+    <string name="tap_to_copy">Tap to copy</string>
+    <string name="upi_id_copied">UPI ID copied: %1$s</string>
+    <string name="amount_to_pay_label">Amount to pay: %1$s</string>
+    <string name="seller_upi_not_configured">Seller hasn\'t added a UPI ID or QR yet. Ask your mess owner before sending payment.</string>
+    <string name="send_payment_screenshot_btn">Send Payment Screenshot</string>
+    <string name="submit_proof_dialog_title">Send Payment Proof</string>
+    <string name="submit_proof_dialog_sub">Paid in your UPI app? Check the amount and send the screenshot to your seller.</string>
+    <string name="submit_proof_btn">Submit Proof</string>
+    <string name="proof_sent_waiting">Payment Proof Sent — Waiting for seller confirmation</string>
+    <string name="proof_status_pending">Pending</string>
+    <string name="proof_status_confirmed">Confirmed</string>
+    <string name="proof_status_rejected">Rejected</string>
+    <string name="proof_rejected_reason">Seller note: %1$s</string>
+    <string name="msg_payment_proof_sent">Payment proof sent! Your bill will update once the seller confirms.</string>
+    <string name="err_pick_screenshot_failed">Could not read selected image. Please try another screenshot.</string>
+    <string name="err_invalid_proof_amount">Enter a valid amount between ₹1 and remaining balance.</string>
+    <string name="proof_submitted_amount_line">Submitted %1$s • %2$s</string>
+    <string name="seller_qr_cd">Seller UPI QR code</string>
+    <string name="payment_screenshot_cd">Payment screenshot</string>
+
+    <string name="payment_proofs_title">Payment Proofs</string>
+    <string name="payment_proofs_pending_count">%1$d Pending</string>
+    <string name="no_pending_proofs">No pending payment proofs from customers.</string>
+    <string name="tap_to_view_full">Tap screenshot to view full</string>
+    <string name="submitted_at_label">Submitted: %1$s</string>
+    <string name="confirm_payment_btn">Confirm Payment</string>
+    <string name="reject_proof_btn">Reject</string>
+    <string name="reject_proof_dialog_title">Reject Payment Proof</string>
+    <string name="reject_proof_reason_label">Reason for customer (optional)</string>
+    <string name="confirm_reject_btn">Reject Proof</string>
+    <string name="msg_proof_confirmed">Payment confirmed and bill updated.</string>
+    <string name="msg_proof_rejected">Payment proof rejected.</string>
+    <string name="bill_month_label">Bill: %1$s</string>
+    <string name="close_preview_btn">Close</string>
 </resources>

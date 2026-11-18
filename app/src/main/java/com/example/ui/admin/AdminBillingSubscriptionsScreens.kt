@@ -1,6 +1,10 @@
 package com.example.ui.admin
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -8,17 +12,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -27,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -37,15 +48,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import com.example.R
 import com.example.domain.BillStatus
 import com.example.domain.MonthlyBill
 import com.example.domain.Payment
 import com.example.domain.PaymentMethod
+import com.example.domain.PaymentProof
 import com.example.domain.PaymentStatus
 import com.example.domain.SubscriptionPlan
 import com.example.domain.SubscriptionStatus
@@ -56,13 +73,17 @@ import com.example.ui.theme.ErrorCoral
 import com.example.ui.theme.GlassCard
 import com.example.ui.theme.PillTone
 import com.example.ui.theme.SecondaryText
+import com.example.ui.theme.SkyPrimary
 import com.example.ui.theme.SkyPrimaryButton
+import com.example.ui.theme.SkySecondary
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.lStr
 import com.example.ui.theme.localizedDate
 import com.example.ui.theme.localizedLabel
+import com.example.ui.theme.localizedMonth
 import com.example.ui.theme.localizedMonthTitle
+import com.example.ui.theme.localizedTime
 import java.time.YearMonth
 
 @Composable
@@ -329,14 +350,19 @@ fun AdminBillingScreen(
     onSelectMonth: (YearMonth) -> Unit,
     onGenerateBill: (customerId: String, monthIso: String, discount: Double, previousBalance: Double) -> Unit,
     onRecordPayment: (billId: String, amount: Double, method: PaymentMethod, refNote: String?) -> Unit,
-    onReversePayment: (paymentId: String, reason: String) -> Unit
+    onReversePayment: (paymentId: String, reason: String) -> Unit,
+    onConfirmPaymentProof: (proofId: String) -> Unit = {},
+    onRejectPaymentProof: (proofId: String, reason: String?) -> Unit = { _, _ -> }
 ) {
     var statusFilter by remember { mutableStateOf("ALL") }
     var showGenerateDialog by remember { mutableStateOf(false) }
     var paymentTargetBill by remember { mutableStateOf<MonthlyBill?>(null) }
     var reverseTargetPayment by remember { mutableStateOf<Payment?>(null) }
+    var rejectTargetProof by remember { mutableStateOf<PaymentProof?>(null) }
+    var fullscreenProofImageUrl by remember { mutableStateOf<String?>(null) }
 
     val customerNames = remember(state.customers) { state.customers.associateBy({ it.id }, { it.fullName }) }
+    val billById = remember(state.bills) { state.bills.associateBy { it.id } }
     val customerFallback = lStr(R.string.customer_fallback)
     val monthTitle = localizedMonthTitle(state.selectedMonth)
     val monthIso = TiffinBusinessLogic.monthStartIso(state.selectedMonth)
@@ -373,6 +399,169 @@ fun AdminBillingScreen(
         if (!state.errorMessage.isNullOrBlank()) item { ErrorNoticeCard(state.errorMessage) }
         if (!state.successMessage.isNullOrBlank()) {
             item { GlassCard(modifier = Modifier.fillMaxWidth()) { StatusPill(state.successMessage, PillTone.SUCCESS) } }
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_payment_proofs_section"),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = lStr(R.string.payment_proofs_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = DeepBlueText
+                )
+                StatusPill(
+                    label = lStr(R.string.payment_proofs_pending_count, state.pendingPaymentProofs.size),
+                    tone = if (state.pendingPaymentProofs.isNotEmpty()) PillTone.WARNING else PillTone.NEUTRAL
+                )
+            }
+        }
+
+        if (state.pendingPaymentProofs.isEmpty()) {
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = lStr(R.string.no_pending_proofs),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SecondaryText
+                    )
+                }
+            }
+        } else {
+            items(state.pendingPaymentProofs, key = { "proof_${it.id}" }) { proof ->
+                val linkedBill = proof.billId?.let { billById[it] }
+                val billMonthLabel = linkedBill?.billingMonth?.let {
+                    lStr(R.string.bill_month_label, localizedMonth(it))
+                }
+                val dateLabel = proof.createdAt?.let { raw ->
+                    val d = localizedDate(raw.take(10))
+                    val t = localizedTime(raw, state.mess.timezone)
+                    if (t != null) "$d • $t" else d
+                } ?: ""
+                val signedImageUrl = state.proofSignedUrls[proof.screenshotPath]
+
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_proof_card_${proof.id}"),
+                    strongSurface = true
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = customerNames[proof.customerId] ?: customerFallback,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = DeepBlueText
+                            )
+                            if (!billMonthLabel.isNullOrBlank()) {
+                                Text(
+                                    text = billMonthLabel,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = SecondaryText
+                                )
+                            }
+                            if (dateLabel.isNotBlank()) {
+                                Text(
+                                    text = lStr(R.string.submitted_at_label, dateLabel),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = SecondaryText
+                                )
+                            }
+                        }
+                        Text(
+                            text = TiffinBusinessLogic.formatCurrency(proof.amount, state.mess.currency),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = DeepBlueText,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (!signedImageUrl.isNullOrBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, SkySecondary.copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clickable { fullscreenProofImageUrl = signedImageUrl }
+                                .testTag("proof_image_${proof.id}")
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                AsyncImage(
+                                    model = signedImageUrl,
+                                    contentDescription = lStr(R.string.payment_screenshot_cd),
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Surface(
+                                    color = Color.Black.copy(alpha = 0.58f),
+                                    shape = RoundedCornerShape(999.dp),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ZoomIn,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = lStr(R.string.tap_to_view_full),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SkyPrimaryButton(
+                            text = lStr(R.string.confirm_payment_btn),
+                            icon = Icons.Outlined.CheckCircle,
+                            onClick = { onConfirmPaymentProof(proof.id) },
+                            loading = state.isActionBusy,
+                            modifier = Modifier
+                                .weight(1.25f)
+                                .testTag("confirm_proof_${proof.id}")
+                        )
+                        OutlinedButton(
+                            onClick = { rejectTargetProof = proof },
+                            enabled = !state.isActionBusy,
+                            modifier = Modifier
+                                .weight(0.85f)
+                                .height(50.dp)
+                                .minimumInteractiveComponentSize()
+                                .testTag("reject_proof_${proof.id}")
+                        ) {
+                            Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(lStr(R.string.reject_proof_btn))
+                        }
+                    }
+                }
+            }
         }
 
         item {
@@ -558,5 +747,89 @@ fun AdminBillingScreen(
             },
             dismissButton = { TextButton(onClick = { reverseTargetPayment = null }) { Text(lStr(R.string.action_cancel)) } }
         )
+    }
+
+    val proofToReject = rejectTargetProof
+    if (proofToReject != null) {
+        var rejectReason by remember(proofToReject.id) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { rejectTargetProof = null },
+            title = { Text(lStr(R.string.reject_proof_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "${customerNames[proofToReject.customerId] ?: customerFallback} • ${
+                            TiffinBusinessLogic.formatCurrency(proofToReject.amount, state.mess.currency)
+                        }",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DeepBlueText
+                    )
+                    OutlinedTextField(
+                        value = rejectReason,
+                        onValueChange = { rejectReason = it },
+                        label = { Text(lStr(R.string.reject_proof_reason_label)) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("reject_proof_reason_input")
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        rejectTargetProof = null
+                        onRejectPaymentProof(proofToReject.id, rejectReason)
+                    },
+                    modifier = Modifier.testTag("confirm_reject_proof_button")
+                ) {
+                    Text(lStr(R.string.confirm_reject_btn), color = ErrorCoral)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { rejectTargetProof = null }) {
+                    Text(lStr(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    val fullUrl = fullscreenProofImageUrl
+    if (!fullUrl.isNullOrBlank()) {
+        Dialog(onDismissRequest = { fullscreenProofImageUrl = null }) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = lStr(R.string.payment_screenshot_cd),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = DeepBlueText
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    AsyncImage(
+                        model = fullUrl,
+                        contentDescription = lStr(R.string.payment_screenshot_cd),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(360.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.Black.copy(alpha = 0.04f))
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(
+                        onClick = { fullscreenProofImageUrl = null },
+                        modifier = Modifier.testTag("close_proof_preview_button")
+                    ) {
+                        Text(lStr(R.string.close_preview_btn))
+                    }
+                }
+            }
+        }
     }
 }

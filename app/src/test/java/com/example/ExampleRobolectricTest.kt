@@ -18,6 +18,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.SessionStore
 import com.example.domain.AccountStatus
 import com.example.domain.AppLanguage
+import com.example.domain.BillStatus
 import com.example.domain.CustomerDailyMark
 import com.example.domain.CustomerProfile
 import com.example.domain.DailyMarkChoice
@@ -25,6 +26,8 @@ import com.example.domain.DiscoverableMess
 import com.example.domain.LeaveStatus
 import com.example.domain.Mess
 import com.example.domain.MonthlyBill
+import com.example.domain.PaymentProof
+import com.example.domain.PaymentProofStatus
 import com.example.domain.Profile
 import com.example.domain.ProximityTier
 import com.example.domain.SellerRegistrationResult
@@ -35,13 +38,16 @@ import com.example.domain.TiffinMonthSummary
 import com.example.domain.TiffinRecord
 import com.example.domain.TiffinStatus
 import com.example.domain.UserRole
+import com.example.ui.admin.AdminBillingScreen
 import com.example.ui.admin.AdminDashboardScreen
+import com.example.ui.admin.AdminProfileSettingsScreen
 import com.example.ui.admin.AdminTiffinsScreen
 import com.example.ui.admin.AdminUiState
 import com.example.ui.auth.RoleChoiceScreen
 import com.example.ui.auth.SellerRegistrationSuccessScreen
 import com.example.ui.auth.WelcomeScreen
 import com.example.ui.customer.CustomerDashboardScreen
+import com.example.ui.customer.CustomerPaymentsScreen
 import com.example.ui.customer.CustomerProfileScreen
 import com.example.ui.customer.CustomerUiState
 import com.example.ui.discovery.FindTiffinNearMeScreen
@@ -503,5 +509,172 @@ class ExampleRobolectricTest {
         assertTrue(store.hasChosenLanguage())
 
         store.clearLanguageForTesting()
+    }
+
+    @Test
+    fun `customer payments screen renders seller UPI ID screenshot button and proof statuses`() {
+        val mess = Mess(
+            id = "m1",
+            name = "Annapurna Mess",
+            ownerId = "o1",
+            upiId = "annapurna@okhdfcbank",
+            upiQrPath = "m1/qr/qr1.jpg"
+        )
+        val profile = Profile("u1", "Aarav Sharma", "aarav@example.com", role = UserRole.CUSTOMER, accountStatus = AccountStatus.ACTIVE)
+        val customer = CustomerProfile("c1", "m1", "u1", "Aarav Sharma", "9876543210")
+        val billUnpaid = MonthlyBill(
+            id = "b1",
+            messId = "m1",
+            customerId = "c1",
+            billingMonth = "2026-11-01",
+            totalAmount = 2500.0,
+            amountPaid = 0.0,
+            balanceDue = 2500.0,
+            dueDate = "2026-11-10",
+            status = BillStatus.PENDING
+        )
+        val billWaiting = MonthlyBill(
+            id = "b2",
+            messId = "m1",
+            customerId = "c1",
+            billingMonth = "2026-10-01",
+            totalAmount = 2500.0,
+            amountPaid = 0.0,
+            balanceDue = 2500.0,
+            dueDate = "2026-10-10",
+            status = BillStatus.OVERDUE
+        )
+        val pendingProof = PaymentProof(
+            id = "pr2",
+            messId = "m1",
+            customerId = "c1",
+            billId = "b2",
+            amount = 2500.0,
+            screenshotPath = "m1/proofs/c1/shot2.jpg",
+            status = PaymentProofStatus.PENDING,
+            createdAt = "2026-11-18T10:00:00Z"
+        )
+
+        composeRule.setContent {
+            TiffinMessTheme(language = AppLanguage.ENGLISH) {
+                CustomerPaymentsScreen(
+                    state = CustomerUiState(
+                        profile = profile,
+                        mess = mess,
+                        customer = customer,
+                        isLoading = false,
+                        selectedMonth = TiffinBusinessLogic.messYearMonth(mess.timezone),
+                        bills = listOf(billUnpaid, billWaiting),
+                        paymentProofs = listOf(pendingProof)
+                    )
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("copy_upi_id_b1").assertIsDisplayed()
+        composeRule.onNodeWithText("annapurna@okhdfcbank").assertIsDisplayed()
+        composeRule.onNodeWithTag("send_payment_screenshot_button_b1").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("customer_payments_list").performScrollToNode(hasTestTag("customer_bill_card_b2"))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("proof_waiting_b2", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Payment Proof Sent — Waiting for seller confirmation", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `admin billing renders pending payment proofs with confirm and reject actions`() {
+        val mess = Mess(id = "m1", name = "Annapurna Mess", ownerId = "o1")
+        val profile = Profile("o1", "Ramesh Joshi", "owner@example.com", role = UserRole.OWNER, accountStatus = AccountStatus.ACTIVE)
+        val customer = CustomerProfile("c1", "m1", "u1", "Rohan Patil", "9876543210")
+        val bill = MonthlyBill(
+            id = "b1",
+            messId = "m1",
+            customerId = "c1",
+            billingMonth = "2026-11-01",
+            totalAmount = 2500.0,
+            amountPaid = 0.0,
+            balanceDue = 2500.0,
+            dueDate = "2026-11-10",
+            status = BillStatus.PENDING
+        )
+        val proof = PaymentProof(
+            id = "pr1",
+            messId = "m1",
+            customerId = "c1",
+            billId = "b1",
+            amount = 2500.0,
+            screenshotPath = "m1/proofs/c1/shot1.jpg",
+            status = PaymentProofStatus.PENDING,
+            createdAt = "2026-11-18T11:30:00Z"
+        )
+        var confirmedId: String? = null
+        var rejectedPair: Pair<String, String?>? = null
+
+        composeRule.setContent {
+            TiffinMessTheme(language = AppLanguage.ENGLISH) {
+                AdminBillingScreen(
+                    state = AdminUiState(
+                        profile = profile,
+                        mess = mess,
+                        isOwner = true,
+                        isLoading = false,
+                        selectedDate = TiffinBusinessLogic.messToday(mess.timezone),
+                        selectedMonth = TiffinBusinessLogic.messYearMonth(mess.timezone),
+                        customers = listOf(customer),
+                        bills = listOf(bill),
+                        paymentProofs = listOf(proof)
+                    ),
+                    onSelectMonth = {},
+                    onGenerateBill = { _, _, _, _ -> },
+                    onRecordPayment = { _, _, _, _ -> },
+                    onReversePayment = { _, _ -> },
+                    onConfirmPaymentProof = { confirmedId = it },
+                    onRejectPaymentProof = { id, reason -> rejectedPair = id to reason }
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("admin_payment_proofs_section").assertIsDisplayed()
+        composeRule.onNodeWithTag("admin_proof_card_pr1").assertIsDisplayed()
+        composeRule.onNodeWithText("Rohan Patil").assertIsDisplayed()
+        composeRule.onNodeWithTag("confirm_proof_pr1").performClick()
+        assertEquals("pr1", confirmedId)
+
+        composeRule.onNodeWithTag("reject_proof_pr1").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("confirm_reject_proof_button").performClick()
+        assertEquals("pr1", rejectedPair?.first)
+    }
+
+    @Test
+    fun `admin profile settings renders UPI payment settings card`() {
+        val mess = Mess(id = "m1", name = "Annapurna Mess", ownerId = "o1", upiId = "mess@okaxis")
+        val profile = Profile("o1", "Ramesh Joshi", "owner@example.com", role = UserRole.OWNER, accountStatus = AccountStatus.ACTIVE)
+
+        composeRule.setContent {
+            TiffinMessTheme(language = AppLanguage.ENGLISH) {
+                AdminProfileSettingsScreen(
+                    state = AdminUiState(
+                        profile = profile,
+                        mess = mess,
+                        isOwner = true,
+                        isLoading = false,
+                        selectedDate = TiffinBusinessLogic.messToday(mess.timezone),
+                        selectedMonth = TiffinBusinessLogic.messYearMonth(mess.timezone)
+                    ),
+                    onUpdateMessSettings = { _, _, _, _, _, _, _ -> },
+                    onRotateCode = {},
+                    onInviteAdmin = {},
+                    onSaveUpiSettings = { _, _ -> },
+                    onSignOut = {}
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("admin_payment_settings_card"))
+        composeRule.onNodeWithTag("admin_payment_settings_card").assertIsDisplayed()
+        composeRule.onNodeWithTag("admin_upi_id_input").assertIsDisplayed()
+        composeRule.onNodeWithTag("admin_upload_qr_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("admin_save_payment_settings_button").assertIsDisplayed()
     }
 }

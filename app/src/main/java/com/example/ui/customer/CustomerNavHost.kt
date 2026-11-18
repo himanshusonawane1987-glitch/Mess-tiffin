@@ -132,7 +132,12 @@ fun CustomerShell(
                     )
                 }
                 composable<CustomerPaymentsRoute> {
-                    CustomerPaymentsScreen(state = state)
+                    CustomerPaymentsScreen(
+                        state = state,
+                        onSubmitPaymentProof = { bill, amountInput, screenshotUri ->
+                            viewModel.submitPaymentProof(context, bill, amountInput, screenshotUri)
+                        }
+                    )
                 }
                 composable<CustomerProfileRoute> {
                     CustomerProfileScreen(

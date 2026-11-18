@@ -1,7 +1,14 @@
 package com.example.ui.customer
 
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,12 +24,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -32,6 +43,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,17 +54,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.domain.AppLanguage
 import com.example.domain.BillStatus
 import com.example.domain.MonthlyBill
+import com.example.domain.PaymentProof
+import com.example.domain.PaymentProofStatus
 import com.example.domain.PaymentStatus
 import com.example.domain.SubscriptionStatus
 import com.example.domain.TiffinBusinessLogic
@@ -66,6 +84,7 @@ import com.example.ui.theme.PillTone
 import com.example.ui.theme.SecondaryText
 import com.example.ui.theme.SkyPrimary
 import com.example.ui.theme.SkyPrimaryButton
+import com.example.ui.theme.SkySecondary
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.lStr
@@ -272,12 +291,34 @@ fun CustomerSubscriptionScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CustomerPaymentsScreen(state: CustomerUiState) {
+fun CustomerPaymentsScreen(
+    state: CustomerUiState,
+    onSubmitPaymentProof: (bill: MonthlyBill, amountInput: String, screenshotUri: Uri) -> Unit = { _, _, _ -> }
+) {
     var selectedBill by remember { mutableStateOf<MonthlyBill?>(null) }
+    var pendingProofBill by remember { mutableStateOf<MonthlyBill?>(null) }
+    var pickedProofUri by remember { mutableStateOf<Uri?>(null) }
+    var showFullQrDialog by remember { mutableStateOf(false) }
+    var copiedMessage by remember { mutableStateOf<String?>(null) }
+
     val context = LocalContext.current
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
+
+    val pickScreenshotLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null && pendingProofBill != null) {
+            pickedProofUri = uri
+        } else {
+            pendingProofBill = null
+        }
+    }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("customer_payments_list"),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 104.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -288,6 +329,18 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = SecondaryText
             )
+        }
+
+        if (!state.errorMessage.isNullOrBlank()) {
+            item { ErrorNoticeCard(state.errorMessage) }
+        }
+        val activeSuccess = state.successMessage ?: copiedMessage
+        if (!activeSuccess.isNullOrBlank()) {
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    StatusPill(label = activeSuccess, tone = PillTone.SUCCESS)
+                }
+            }
         }
 
         if (state.bills.isEmpty()) {
@@ -309,8 +362,11 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                     BillStatus.PENDING -> PillTone.INFO
                     BillStatus.OVERDUE -> PillTone.ERROR
                 }
+                val latestProof = TiffinBusinessLogic.latestProofForBill(bill.id, state.paymentProofs)
                 GlassCard(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("customer_bill_card_${bill.id}"),
                     strongSurface = true,
                     onClick = { selectedBill = bill }
                 ) {
@@ -343,6 +399,41 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                             text = lStr(R.string.due_colon, TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency)),
                             color = if (bill.balanceDue > 0) ErrorCoral else SuccessGreen,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (latestProof != null) {
+                        Spacer(Modifier.height(10.dp))
+                        PaymentProofStatusSection(
+                            proof = latestProof,
+                            currency = state.mess.currency,
+                            timezone = state.mess.timezone
+                        )
+                    }
+
+                    if (bill.balanceDue > 0.0 && latestProof?.status != PaymentProofStatus.PENDING) {
+                        Spacer(Modifier.height(12.dp))
+                        HorizontalDivider(color = SkySecondary.copy(alpha = 0.25f))
+                        Spacer(Modifier.height(12.dp))
+                        val copiedTemplate = state.mess.upiId?.let { lStr(R.string.upi_id_copied, it) }
+                        PayViaUpiSection(
+                            bill = bill,
+                            currency = state.mess.currency,
+                            upiId = state.mess.upiId,
+                            upiQrSignedUrl = state.upiQrSignedUrl,
+                            isBusy = state.isActionBusy,
+                            onCopyUpiId = { upi ->
+                                clipboard.setText(AnnotatedString(upi))
+                                copiedMessage = copiedTemplate ?: upi
+                                Toast.makeText(context, copiedTemplate ?: upi, Toast.LENGTH_SHORT).show()
+                            },
+                            onExpandQr = { showFullQrDialog = true },
+                            onSendScreenshotClick = {
+                                pendingProofBill = bill
+                                pickScreenshotLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
                         )
                     }
                 }
@@ -389,6 +480,7 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
     val bill = selectedBill
     if (bill != null) {
         val billPayments = state.payments.filter { it.billId == bill.id }
+        val latestProof = TiffinBusinessLogic.latestProofForBill(bill.id, state.paymentProofs)
         val monthDisplay = localizedMonth(bill.billingMonth)
         val shareChooser = lStr(R.string.share_bill_chooser)
         val shareSummary = lStr(
@@ -442,6 +534,38 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                 BillLine(lStr(R.string.bill_amount_paid), TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency), bold = true)
                 BillLine(lStr(R.string.bill_remaining_balance), TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency), bold = true)
 
+                if (latestProof != null) {
+                    PaymentProofStatusSection(
+                        proof = latestProof,
+                        currency = state.mess.currency,
+                        timezone = state.mess.timezone
+                    )
+                }
+
+                if (bill.balanceDue > 0.0 && latestProof?.status != PaymentProofStatus.PENDING) {
+                    val copiedTemplate = state.mess.upiId?.let { lStr(R.string.upi_id_copied, it) }
+                    PayViaUpiSection(
+                        bill = bill,
+                        currency = state.mess.currency,
+                        upiId = state.mess.upiId,
+                        upiQrSignedUrl = state.upiQrSignedUrl,
+                        isBusy = state.isActionBusy,
+                        onCopyUpiId = { upi ->
+                            clipboard.setText(AnnotatedString(upi))
+                            copiedMessage = copiedTemplate ?: upi
+                            Toast.makeText(context, copiedTemplate ?: upi, Toast.LENGTH_SHORT).show()
+                        },
+                        onExpandQr = { showFullQrDialog = true },
+                        onSendScreenshotClick = {
+                            selectedBill = null
+                            pendingProofBill = bill
+                            pickScreenshotLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                    )
+                }
+
                 if (billPayments.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Text(lStr(R.string.bill_payments_list_title), style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
@@ -470,6 +594,292 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                 Spacer(Modifier.height(16.dp))
             }
         }
+    }
+
+    val confirmBill = pendingProofBill
+    val proofUri = pickedProofUri
+    if (confirmBill != null && proofUri != null) {
+        var amountInput by remember(confirmBill.id, proofUri) {
+            mutableStateOf(
+                if (confirmBill.balanceDue % 1.0 == 0.0) confirmBill.balanceDue.toInt().toString()
+                else confirmBill.balanceDue.toString()
+            )
+        }
+        AlertDialog(
+            onDismissRequest = {
+                pendingProofBill = null
+                pickedProofUri = null
+            },
+            title = { Text(lStr(R.string.submit_proof_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = lStr(R.string.submit_proof_dialog_sub),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SecondaryText
+                    )
+                    AsyncImage(
+                        model = proofUri,
+                        contentDescription = lStr(R.string.payment_screenshot_cd),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(170.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.Black.copy(alpha = 0.04f))
+                    )
+                    OutlinedTextField(
+                        value = amountInput,
+                        onValueChange = { amountInput = it },
+                        label = { Text(lStr(R.string.amount_label, state.mess.currency)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("proof_amount_input")
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val targetBill = confirmBill
+                        val targetUri = proofUri
+                        pendingProofBill = null
+                        pickedProofUri = null
+                        onSubmitPaymentProof(targetBill, amountInput, targetUri)
+                    },
+                    modifier = Modifier.testTag("submit_payment_proof_button")
+                ) {
+                    Text(lStr(R.string.submit_proof_btn))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingProofBill = null
+                    pickedProofUri = null
+                }) {
+                    Text(lStr(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    if (showFullQrDialog && !state.upiQrSignedUrl.isNullOrBlank()) {
+        Dialog(onDismissRequest = { showFullQrDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = lStr(R.string.upi_qr_label),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = DeepBlueText
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    AsyncImage(
+                        model = state.upiQrSignedUrl,
+                        contentDescription = lStr(R.string.seller_qr_cd),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(onClick = { showFullQrDialog = false }) {
+                        Text(lStr(R.string.close_preview_btn))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentProofStatusSection(
+    proof: PaymentProof,
+    currency: String,
+    timezone: String?
+) {
+    val (statusLabel, tone) = when (proof.status) {
+        PaymentProofStatus.PENDING -> lStr(R.string.proof_status_pending) to PillTone.WARNING
+        PaymentProofStatus.CONFIRMED -> lStr(R.string.proof_status_confirmed) to PillTone.SUCCESS
+        PaymentProofStatus.REJECTED -> lStr(R.string.proof_status_rejected) to PillTone.ERROR
+    }
+    val dateStr = proof.createdAt?.take(10)?.let { localizedDate(it) } ?: ""
+    val amtStr = TiffinBusinessLogic.formatCurrency(proof.amount, currency)
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = SkyPrimary.copy(alpha = 0.06f),
+        border = BorderStroke(1.dp, SkySecondary.copy(alpha = 0.30f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("proof_status_box_${proof.billId ?: proof.id}")
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = lStr(R.string.proof_submitted_amount_line, amtStr, dateStr),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = DeepBlueText,
+                    modifier = Modifier.weight(1f)
+                )
+                StatusPill(label = statusLabel, tone = tone)
+            }
+            if (proof.status == PaymentProofStatus.PENDING) {
+                Text(
+                    text = lStr(R.string.proof_sent_waiting),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DeepBlueText,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.testTag("proof_waiting_${proof.billId ?: proof.id}")
+                )
+            } else if (proof.status == PaymentProofStatus.REJECTED && !proof.rejectReason.isNullOrBlank()) {
+                Text(
+                    text = lStr(R.string.proof_rejected_reason, proof.rejectReason),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ErrorCoral
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PayViaUpiSection(
+    bill: MonthlyBill,
+    currency: String,
+    upiId: String?,
+    upiQrSignedUrl: String?,
+    isBusy: Boolean,
+    onCopyUpiId: (String) -> Unit,
+    onExpandQr: () -> Unit,
+    onSendScreenshotClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Outlined.QrCode2, contentDescription = null, tint = SkyPrimary, modifier = Modifier.size(20.dp))
+                Text(
+                    text = lStr(R.string.pay_via_upi_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = DeepBlueText
+                )
+            }
+            Text(
+                text = lStr(R.string.amount_to_pay_label, TiffinBusinessLogic.formatCurrency(bill.balanceDue, currency)),
+                style = MaterialTheme.typography.labelLarge,
+                color = DeepBlueText,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (!upiId.isNullOrBlank() || !upiQrSignedUrl.isNullOrBlank()) {
+            if (!upiId.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.85f),
+                    border = BorderStroke(1.dp, SkySecondary.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onCopyUpiId(upiId) }
+                        .testTag("copy_upi_id_${bill.id}")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = lStr(R.string.seller_upi_id_label),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SecondaryText
+                            )
+                            Text(
+                                text = upiId,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = DeepBlueText,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = lStr(R.string.tap_to_copy),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = SkyPrimary
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.ContentCopy,
+                                contentDescription = lStr(R.string.tap_to_copy),
+                                tint = SkyPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (!upiQrSignedUrl.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, SkySecondary.copy(alpha = 0.40f)),
+                    modifier = Modifier
+                        .size(160.dp)
+                        .clickable { onExpandQr() }
+                        .testTag("seller_upi_qr_${bill.id}")
+                ) {
+                    AsyncImage(
+                        model = upiQrSignedUrl,
+                        contentDescription = lStr(R.string.seller_qr_cd),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp)
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = lStr(R.string.seller_upi_not_configured),
+                style = MaterialTheme.typography.bodyMedium,
+                color = SecondaryText
+            )
+        }
+
+        SkyPrimaryButton(
+            text = lStr(R.string.send_payment_screenshot_btn),
+            icon = Icons.Outlined.UploadFile,
+            onClick = onSendScreenshotClick,
+            loading = isBusy,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("send_payment_screenshot_button_${bill.id}")
+        )
     }
 }
 

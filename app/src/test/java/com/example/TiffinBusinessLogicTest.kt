@@ -12,10 +12,13 @@ import com.example.domain.DailyMenu
 import com.example.domain.LeaveStatus
 import com.example.domain.Mess
 import com.example.domain.MessMember
+import com.example.domain.MonthlyBill
 import com.example.domain.OnboardingRoleChoice
 import com.example.domain.OnboardingStep
 import com.example.domain.Payment
 import com.example.domain.PaymentMethod
+import com.example.domain.PaymentProof
+import com.example.domain.PaymentProofStatus
 import com.example.domain.PaymentStatus
 import com.example.domain.Profile
 import com.example.domain.ProximityTier
@@ -458,5 +461,197 @@ class TiffinBusinessLogicTest {
         assertEquals(com.example.domain.AppLanguage.HINGLISH, com.example.domain.AppLanguage.fromDb("hinglish"))
         assertEquals(com.example.domain.AppLanguage.HINGLISH, com.example.domain.AppLanguage.fromDb(null))
         assertEquals(com.example.domain.AppLanguage.HINGLISH, com.example.domain.AppLanguage.fromDb(""))
+    }
+
+    @Test
+    fun `payment proof submission links right bill and amount without marking bill paid`() {
+        val customer = CustomerProfile(
+            id = "c1",
+            messId = "m1",
+            userId = "u1",
+            fullName = "Rohan Patil",
+            phone = "9876543210",
+            customerStatus = AccountStatus.ACTIVE
+        )
+        val unpaidBill = MonthlyBill(
+            id = "b1",
+            messId = "m1",
+            customerId = "c1",
+            billingMonth = "2026-11-01",
+            subscriptionCharge = 2500.0,
+            totalAmount = 2500.0,
+            amountPaid = 0.0,
+            balanceDue = 2500.0,
+            dueDate = "2026-11-10",
+            status = BillStatus.PENDING
+        )
+        val path = TiffinBusinessLogic.storagePathForCustomerProof("m1", "c1", "proof001")
+        val draft = TiffinBusinessLogic.buildPaymentProofDraft(
+            customer = customer,
+            activeMessId = "m1",
+            bill = unpaidBill,
+            amount = 2500.0,
+            screenshotPath = path,
+            proofId = "pr1"
+        )
+        assertTrue(draft.isSuccess)
+        val proof = draft.getOrThrow()
+        assertEquals("m1", proof.messId)
+        assertEquals("c1", proof.customerId)
+        assertEquals("b1", proof.billId)
+        assertEquals(2500.0, proof.amount, 0.01)
+        assertEquals(PaymentProofStatus.PENDING, proof.status)
+        // Money rule: proof upload must NOT auto-mark bill paid
+        assertEquals(BillStatus.PENDING, unpaidBill.status)
+        assertEquals(2500.0, unpaidBill.balanceDue, 0.01)
+    }
+
+    @Test
+    fun `seller confirm payment proof records UPI payment and marks bill paid`() {
+        val unpaidBill = MonthlyBill(
+            id = "b1",
+            messId = "m1",
+            customerId = "c1",
+            billingMonth = "2026-11-01",
+            subscriptionCharge = 2500.0,
+            totalAmount = 2500.0,
+            amountPaid = 0.0,
+            balanceDue = 2500.0,
+            dueDate = "2026-11-10",
+            status = BillStatus.PENDING
+        )
+        val proof = PaymentProof(
+            id = "pr1",
+            messId = "m1",
+            customerId = "c1",
+            billId = "b1",
+            amount = 2500.0,
+            screenshotPath = "m1/proofs/c1/proof001.jpg",
+            status = PaymentProofStatus.PENDING
+        )
+
+        val reviewed = TiffinBusinessLogic.applyPaymentProofReview(
+            proof = proof,
+            bill = unpaidBill,
+            existingBillPayments = emptyList(),
+            decision = PaymentProofStatus.CONFIRMED,
+            rejectReason = null,
+            reviewerAdminId = "owner1",
+            reviewerMessId = "m1",
+            todayInMessZone = LocalDate.of(2026, 11, 8)
+        )
+        assertTrue(reviewed.isSuccess)
+        val (updatedProof, updatedBill) = reviewed.getOrThrow()
+        assertEquals(PaymentProofStatus.CONFIRMED, updatedProof.status)
+        assertNull(updatedProof.rejectReason)
+        assertEquals(2500.0, updatedBill.amountPaid, 0.01)
+        assertEquals(0.0, updatedBill.balanceDue, 0.01)
+        assertEquals(BillStatus.PAID, updatedBill.status)
+    }
+
+    @Test
+    fun `seller reject payment proof keeps bill unpaid and stores reject reason`() {
+        val unpaidBill = MonthlyBill(
+            id = "b1",
+            messId = "m1",
+            customerId = "c1",
+            billingMonth = "2026-11-01",
+            subscriptionCharge = 2500.0,
+            totalAmount = 2500.0,
+            amountPaid = 0.0,
+            balanceDue = 2500.0,
+            dueDate = "2026-11-10",
+            status = BillStatus.PENDING
+        )
+        val proof = PaymentProof(
+            id = "pr2",
+            messId = "m1",
+            customerId = "c1",
+            billId = "b1",
+            amount = 2500.0,
+            screenshotPath = "m1/proofs/c1/proof002.jpg",
+            status = PaymentProofStatus.PENDING
+        )
+
+        val reviewed = TiffinBusinessLogic.applyPaymentProofReview(
+            proof = proof,
+            bill = unpaidBill,
+            existingBillPayments = emptyList(),
+            decision = PaymentProofStatus.REJECTED,
+            rejectReason = "UTR not visible in screenshot",
+            reviewerAdminId = "owner1",
+            reviewerMessId = "m1",
+            todayInMessZone = LocalDate.of(2026, 11, 8)
+        )
+        assertTrue(reviewed.isSuccess)
+        val (updatedProof, updatedBill) = reviewed.getOrThrow()
+        assertEquals(PaymentProofStatus.REJECTED, updatedProof.status)
+        assertEquals("UTR not visible in screenshot", updatedProof.rejectReason)
+        assertEquals(0.0, updatedBill.amountPaid, 0.01)
+        assertEquals(2500.0, updatedBill.balanceDue, 0.01)
+        assertEquals(BillStatus.PENDING, updatedBill.status)
+    }
+
+    @Test
+    fun `customer cannot submit payment proof for another mess or cross mess review`() {
+        val customerMess1 = CustomerProfile(
+            id = "c1",
+            messId = "m1",
+            userId = "u1",
+            fullName = "Rohan Patil",
+            phone = "9876543210",
+            customerStatus = AccountStatus.ACTIVE
+        )
+        val billInMess2 = MonthlyBill(
+            id = "b_other",
+            messId = "m2",
+            customerId = "c_other",
+            billingMonth = "2026-11-01",
+            subscriptionCharge = 3000.0,
+            totalAmount = 3000.0,
+            amountPaid = 0.0,
+            balanceDue = 3000.0,
+            dueDate = "2026-11-10",
+            status = BillStatus.PENDING
+        )
+
+        val crossMessResult = TiffinBusinessLogic.buildPaymentProofDraft(
+            customer = customerMess1,
+            activeMessId = "m1",
+            bill = billInMess2,
+            amount = 3000.0,
+            screenshotPath = "m1/proofs/c1/x.jpg"
+        )
+        assertTrue(crossMessResult.isFailure)
+
+        val mismatchedStoragePath = TiffinBusinessLogic.buildPaymentProofDraft(
+            customer = customerMess1,
+            activeMessId = "m1",
+            bill = billInMess2.copy(messId = "m1", customerId = "c1"),
+            amount = 3000.0,
+            screenshotPath = "m2/proofs/c_other/x.jpg"
+        )
+        assertTrue(mismatchedStoragePath.isFailure)
+
+        val crossMessAdminReview = TiffinBusinessLogic.applyPaymentProofReview(
+            proof = PaymentProof("pr9", "m2", "c_other", "b_other", 3000.0, "m2/proofs/c_other/x.jpg"),
+            bill = billInMess2,
+            existingBillPayments = emptyList(),
+            decision = PaymentProofStatus.CONFIRMED,
+            rejectReason = null,
+            reviewerAdminId = "owner_m1",
+            reviewerMessId = "m1",
+            todayInMessZone = LocalDate.of(2026, 11, 8)
+        )
+        assertTrue(crossMessAdminReview.isFailure)
+    }
+
+    @Test
+    fun `upi id validation accepts valid handles and rejects invalid strings`() {
+        assertTrue(TiffinBusinessLogic.isValidUpiId("annapurnamess@okhdfcbank"))
+        assertTrue(TiffinBusinessLogic.isValidUpiId("9876543210@ybl"))
+        assertFalse(TiffinBusinessLogic.isValidUpiId("invalid_without_at"))
+        assertFalse(TiffinBusinessLogic.isValidUpiId("@okicici"))
+        assertFalse(TiffinBusinessLogic.isValidUpiId("name@"))
     }
 }

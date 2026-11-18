@@ -1,6 +1,14 @@
 package com.example.ui.admin
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -8,10 +16,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -20,13 +30,17 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,9 +50,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import com.example.R
 import com.example.domain.AppLanguage
 import com.example.domain.SubscriptionStatus
@@ -52,7 +71,9 @@ import com.example.ui.theme.LanguageSettingsCard
 import com.example.ui.theme.MetricValueCard
 import com.example.ui.theme.PillTone
 import com.example.ui.theme.SecondaryText
+import com.example.ui.theme.SkyPrimary
 import com.example.ui.theme.SkyPrimaryButton
+import com.example.ui.theme.SkySecondary
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.lStr
@@ -165,6 +186,7 @@ fun AdminProfileSettingsScreen(
     ) -> Unit,
     onRotateCode: (newCode: String) -> Unit,
     onInviteAdmin: (email: String) -> Unit,
+    onSaveUpiSettings: (upiId: String, newQrUri: Uri?) -> Unit = { _, _ -> },
     onSignOut: () -> Unit
 ) {
     var messName by remember(state.mess.name) { mutableStateOf(state.mess.name) }
@@ -178,6 +200,17 @@ fun AdminProfileSettingsScreen(
     }
     var newRegCode by remember { mutableStateOf("") }
     var inviteEmail by remember { mutableStateOf("") }
+    var upiIdInput by remember(state.mess.upiId) { mutableStateOf(state.mess.upiId.orEmpty()) }
+    var pickedQrUri by remember { mutableStateOf<Uri?>(null) }
+    var showQrPreviewDialog by remember { mutableStateOf(false) }
+
+    val qrPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            pickedQrUri = uri
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -332,6 +365,129 @@ fun AdminProfileSettingsScreen(
         }
 
         item {
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_payment_settings_card"),
+                strongSurface = true
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.QrCode2,
+                        contentDescription = null,
+                        tint = SkyPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        text = lStr(R.string.payment_settings_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = DeepBlueText
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = lStr(R.string.payment_settings_sub),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SecondaryText
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = upiIdInput,
+                    onValueChange = { upiIdInput = it },
+                    label = { Text(lStr(R.string.upi_id_label)) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_upi_id_input")
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = lStr(R.string.upi_qr_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = DeepBlueText
+                )
+                Spacer(Modifier.height(6.dp))
+                val previewModel: Any? = pickedQrUri ?: state.upiQrSignedUrl
+                if (previewModel != null) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, SkySecondary.copy(alpha = 0.45f)),
+                        modifier = Modifier
+                            .size(150.dp)
+                            .clickable { showQrPreviewDialog = true }
+                            .testTag("admin_qr_preview_image")
+                    ) {
+                        AsyncImage(
+                            model = previewModel,
+                            contentDescription = lStr(R.string.seller_qr_cd),
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(8.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                StatusPill(
+                    label = when {
+                        pickedQrUri != null -> lStr(R.string.upi_qr_selected_pending)
+                        !state.mess.upiQrPath.isNullOrBlank() -> lStr(R.string.upi_qr_ready)
+                        else -> lStr(R.string.upi_qr_not_set)
+                    },
+                    tone = when {
+                        pickedQrUri != null -> PillTone.WARNING
+                        !state.mess.upiQrPath.isNullOrBlank() -> PillTone.SUCCESS
+                        else -> PillTone.NEUTRAL
+                    }
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = lStr(R.string.upi_visibility_note),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SecondaryText
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = {
+                        qrPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("admin_upload_qr_button")
+                ) {
+                    Icon(Icons.Outlined.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (state.mess.upiQrPath.isNullOrBlank() && pickedQrUri == null) {
+                            lStr(R.string.upload_qr_btn)
+                        } else {
+                            lStr(R.string.change_qr_btn)
+                        }
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                SkyPrimaryButton(
+                    text = lStr(R.string.save_payment_settings_btn),
+                    onClick = {
+                        onSaveUpiSettings(upiIdInput, pickedQrUri)
+                        pickedQrUri = null
+                    },
+                    loading = state.isActionBusy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_save_payment_settings_button")
+                )
+            }
+        }
+
+        item {
             LanguageSettingsCard(
                 selectedLanguage = currentLanguage,
                 onSelectLanguage = onSelectLanguage
@@ -346,6 +502,43 @@ fun AdminProfileSettingsScreen(
                 Icon(Icons.Outlined.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(lStr(R.string.action_sign_out))
+            }
+        }
+    }
+
+    val fullQrModel: Any? = pickedQrUri ?: state.upiQrSignedUrl
+    if (showQrPreviewDialog && fullQrModel != null) {
+        Dialog(onDismissRequest = { showQrPreviewDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = lStr(R.string.upi_qr_label),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = DeepBlueText
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    AsyncImage(
+                        model = fullQrModel,
+                        contentDescription = lStr(R.string.seller_qr_cd),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(onClick = { showQrPreviewDialog = false }) {
+                        Text(lStr(R.string.close_preview_btn))
+                    }
+                }
             }
         }
     }
