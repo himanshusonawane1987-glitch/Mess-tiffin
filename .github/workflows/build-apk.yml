@@ -41,12 +41,10 @@ jobs:
           GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
           EOF
 
-      - name: Generate debug keystore
+      - name: Restore debug keystore
         run: |
-          keytool -genkeypair -v -keystore debug.keystore \
-            -storepass android -alias androiddebugkey -keypass android \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          printf '%s' "${{ secrets.TIFFIN_DEBUG_KEYSTORE_BASE64 }}" | base64 -d > debug.keystore
+          ls -la debug.keystore
 
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
