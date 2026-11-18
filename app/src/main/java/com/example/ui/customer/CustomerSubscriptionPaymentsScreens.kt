@@ -49,6 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.R
+import com.example.domain.AppLanguage
 import com.example.domain.BillStatus
 import com.example.domain.MonthlyBill
 import com.example.domain.PaymentStatus
@@ -58,6 +60,7 @@ import com.example.ui.auth.ErrorNoticeCard
 import com.example.ui.theme.DeepBlueText
 import com.example.ui.theme.ErrorCoral
 import com.example.ui.theme.GlassCard
+import com.example.ui.theme.LanguageSettingsCard
 import com.example.ui.theme.MetricValueCard
 import com.example.ui.theme.PillTone
 import com.example.ui.theme.SecondaryText
@@ -65,6 +68,13 @@ import com.example.ui.theme.SkyPrimary
 import com.example.ui.theme.SkyPrimaryButton
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.lStr
+import com.example.ui.theme.localizedDate
+import com.example.ui.theme.localizedLabel
+import com.example.ui.theme.localizedMealSlot
+import com.example.ui.theme.localizedMonth
+import com.example.ui.theme.localizedStatusText
+import com.example.ui.theme.localizedTime
 
 @Composable
 fun CustomerSubscriptionScreen(
@@ -79,8 +89,8 @@ fun CustomerSubscriptionScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("My Subscription", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
-            Text("Plan details and monthly tiffin allowance.", style = MaterialTheme.typography.bodyMedium)
+            Text(lStr(R.string.my_plan_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.my_plan_sub), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
         }
 
         if (!state.successMessage.isNullOrBlank()) {
@@ -95,27 +105,27 @@ fun CustomerSubscriptionScreen(
             val sub = state.activeSubscription
             if (sub == null) {
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
-                    Text("No Active Subscription", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                    Text(lStr(R.string.no_active_sub_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Ask your mess owner to assign a subscription plan, or submit a renewal/plan request below.",
+                        text = lStr(R.string.no_active_sub_desc),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.height(14.dp))
                     SkyPrimaryButton(
-                        text = "Request Plan / Renewal",
+                        text = lStr(R.string.request_plan_renewal_btn),
                         onClick = { showRenewalDialog = true },
                         modifier = Modifier.fillMaxWidth().testTag("request_renewal_button")
                     )
                 }
             } else {
-                val (statusLabel, tone) = when (sub.status) {
-                    SubscriptionStatus.ACTIVE -> "Active" to PillTone.SUCCESS
-                    SubscriptionStatus.EXPIRING_SOON -> "Expiring Soon" to PillTone.WARNING
-                    SubscriptionStatus.EXPIRED -> "Expired" to PillTone.ERROR
-                    SubscriptionStatus.PAUSED -> "Paused" to PillTone.WARNING
-                    SubscriptionStatus.CANCELLED -> "Cancelled" to PillTone.NEUTRAL
+                val tone = when (sub.status) {
+                    SubscriptionStatus.ACTIVE -> PillTone.SUCCESS
+                    SubscriptionStatus.EXPIRING_SOON, SubscriptionStatus.PAUSED -> PillTone.WARNING
+                    SubscriptionStatus.EXPIRED -> PillTone.ERROR
+                    SubscriptionStatus.CANCELLED -> PillTone.NEUTRAL
                 }
+                val localizedSlots = sub.mealSlotsSnapshot.map { localizedMealSlot(it) }.joinToString(" + ")
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -125,11 +135,11 @@ fun CustomerSubscriptionScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(sub.planNameSnapshot, style = MaterialTheme.typography.headlineSmall, color = DeepBlueText)
                             Text(
-                                "${TiffinBusinessLogic.formatCurrency(sub.agreedPrice, state.mess.currency)} • ${sub.mealSlotsSnapshot.joinToString(" + ") { it.replaceFirstChar { c -> c.uppercase() } }}",
+                                text = "${TiffinBusinessLogic.formatCurrency(sub.agreedPrice, state.mess.currency)} • $localizedSlots",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
-                        StatusPill(label = statusLabel, tone = tone)
+                        StatusPill(label = sub.status.localizedLabel(), tone = tone)
                     }
                     Spacer(Modifier.height(14.dp))
                     Row(
@@ -137,18 +147,18 @@ fun CustomerSubscriptionScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         MetricValueCard(
-                            title = "Included",
+                            title = lStr(R.string.metric_included),
                             value = sub.includedTiffins.toString(),
                             modifier = Modifier.weight(1f)
                         )
                         MetricValueCard(
-                            title = "Used",
+                            title = lStr(R.string.metric_used),
                             value = state.monthSummary.deliveredCount.toString(),
                             accentColor = SkyPrimary,
                             modifier = Modifier.weight(1f)
                         )
                         MetricValueCard(
-                            title = "Remaining",
+                            title = lStr(R.string.metric_remaining),
                             value = (state.monthSummary.remainingTiffins ?: 0).toString(),
                             accentColor = SuccessGreen,
                             modifier = Modifier.weight(1f)
@@ -156,13 +166,13 @@ fun CustomerSubscriptionScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        text = "Valid: ${TiffinBusinessLogic.formatDateDisplay(sub.startDate)} to ${TiffinBusinessLogic.formatDateDisplay(sub.endDate)}",
+                        text = lStr(R.string.valid_dates, localizedDate(sub.startDate), localizedDate(sub.endDate)),
                         style = MaterialTheme.typography.bodyMedium,
                         color = DeepBlueText
                     )
                     Spacer(Modifier.height(14.dp))
                     SkyPrimaryButton(
-                        text = "Request Renewal",
+                        text = lStr(R.string.request_renewal_btn),
                         onClick = { showRenewalDialog = true },
                         loading = state.isActionBusy,
                         modifier = Modifier.fillMaxWidth().testTag("request_renewal_button")
@@ -173,7 +183,7 @@ fun CustomerSubscriptionScreen(
 
         if (state.renewalRequests.isNotEmpty()) {
             item {
-                Text("Renewal Requests", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                Text(lStr(R.string.renewal_requests_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
             }
             items(state.renewalRequests, key = { it.id }) { req ->
                 val tone = when (req.status) {
@@ -188,12 +198,12 @@ fun CustomerSubscriptionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Plan Renewal Request", style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
+                            Text(lStr(R.string.plan_renewal_request_item), style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
                             if (!req.note.isNullOrBlank()) {
                                 Text(req.note, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
-                        StatusPill(label = req.status.replaceFirstChar { it.uppercase() }, tone = tone)
+                        StatusPill(label = localizedStatusText(req.status), tone = tone)
                     }
                 }
             }
@@ -205,11 +215,11 @@ fun CustomerSubscriptionScreen(
         var note by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showRenewalDialog = false },
-            title = { Text("Request Subscription Renewal") },
+            title = { Text(lStr(R.string.renewal_dialog_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Your request will be sent to the mess admin for approval.",
+                        text = lStr(R.string.renewal_dialog_sub),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     state.availablePlans.forEach { plan ->
@@ -224,7 +234,12 @@ fun CustomerSubscriptionScreen(
                             Column {
                                 Text(plan.name, style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "${TiffinBusinessLogic.formatCurrency(plan.price, state.mess.currency)} • ${plan.includedTiffins} tiffins / ${plan.durationDays}d",
+                                    text = lStr(
+                                        R.string.plan_summary_line,
+                                        TiffinBusinessLogic.formatCurrency(plan.price, state.mess.currency),
+                                        plan.includedTiffins,
+                                        plan.durationDays
+                                    ),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
@@ -233,7 +248,7 @@ fun CustomerSubscriptionScreen(
                     OutlinedTextField(
                         value = note,
                         onValueChange = { note = it },
-                        label = { Text("Note for admin (optional)") },
+                        label = { Text(lStr(R.string.note_for_admin_opt)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -245,11 +260,11 @@ fun CustomerSubscriptionScreen(
                         onRequestRenewal(selectedPlanId, note)
                     }
                 ) {
-                    Text("Submit Request")
+                    Text(lStr(R.string.submit_request_btn))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showRenewalDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showRenewalDialog = false }) { Text(lStr(R.string.action_cancel)) }
             }
         )
     }
@@ -267,31 +282,32 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Payments & Bills", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.bills_payments_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
             Text(
-                "Payment records are entered and verified by your mess administrator.",
-                style = MaterialTheme.typography.bodyMedium
+                text = lStr(R.string.bills_payments_cust_sub),
+                style = MaterialTheme.typography.bodyMedium,
+                color = SecondaryText
             )
         }
 
         if (state.bills.isEmpty()) {
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
-                    Text("No Monthly Bills Yet", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                    Text(lStr(R.string.no_bills_yet_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "When your mess owner generates a monthly bill, it will appear here with payment history.",
+                        text = lStr(R.string.no_bills_yet_sub),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
         } else {
             items(state.bills, key = { it.id }) { bill ->
-                val (label, tone) = when (bill.status) {
-                    BillStatus.PAID -> "Paid" to PillTone.SUCCESS
-                    BillStatus.PARTIALLY_PAID -> "Partially Paid" to PillTone.WARNING
-                    BillStatus.PENDING -> "Pending" to PillTone.INFO
-                    BillStatus.OVERDUE -> "Overdue" to PillTone.ERROR
+                val tone = when (bill.status) {
+                    BillStatus.PAID -> PillTone.SUCCESS
+                    BillStatus.PARTIALLY_PAID -> PillTone.WARNING
+                    BillStatus.PENDING -> PillTone.INFO
+                    BillStatus.OVERDUE -> PillTone.ERROR
                 }
                 GlassCard(
                     modifier = Modifier.fillMaxWidth(),
@@ -305,26 +321,26 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                     ) {
                         Column {
                             Text(
-                                text = TiffinBusinessLogic.formatMonthDisplay(bill.billingMonth),
+                                text = localizedMonth(bill.billingMonth),
                                 style = MaterialTheme.typography.titleLarge,
                                 color = DeepBlueText
                             )
                             Text(
-                                text = "Due: ${TiffinBusinessLogic.formatDateDisplay(bill.dueDate)}",
+                                text = lStr(R.string.due_colon, localizedDate(bill.dueDate)),
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
-                        StatusPill(label = label, tone = tone)
+                        StatusPill(label = bill.status.localizedLabel(), tone = tone)
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Total: ${TiffinBusinessLogic.formatCurrency(bill.totalAmount, state.mess.currency)}")
-                        Text("Paid: ${TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency)}", color = SuccessGreen)
+                        Text(lStr(R.string.total_colon, TiffinBusinessLogic.formatCurrency(bill.totalAmount, state.mess.currency)))
+                        Text(lStr(R.string.paid_colon, TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency)), color = SuccessGreen)
                         Text(
-                            "Due: ${TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency)}",
+                            text = lStr(R.string.due_colon, TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency)),
                             color = if (bill.balanceDue > 0) ErrorCoral else SuccessGreen,
                             fontWeight = FontWeight.Bold
                         )
@@ -336,9 +352,10 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
         if (state.payments.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(4.dp))
-                Text("Payment Receipts", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                Text(lStr(R.string.payment_receipts_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
             }
             items(state.payments, key = { it.id }) { payment ->
+                val dateText = localizedTime(payment.paymentDate, state.mess.timezone) ?: payment.paymentDate.take(10)
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -352,7 +369,7 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                                 color = if (payment.status == PaymentStatus.CONFIRMED) SuccessGreen else SecondaryText
                             )
                             Text(
-                                text = "${payment.paymentMethod.label} • ${TiffinBusinessLogic.formatTimeInMessZone(payment.paymentDate, state.mess.timezone) ?: payment.paymentDate.take(10)}",
+                                text = "${payment.paymentMethod.localizedLabel()} • $dateText",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             if (!payment.referenceNote.isNullOrBlank()) {
@@ -360,7 +377,7 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                             }
                         }
                         StatusPill(
-                            label = if (payment.status == PaymentStatus.CONFIRMED) "Confirmed" else "Reversed",
+                            label = if (payment.status == PaymentStatus.CONFIRMED) lStr(R.string.payment_confirmed) else lStr(R.string.payment_reversed),
                             tone = if (payment.status == PaymentStatus.CONFIRMED) PillTone.SUCCESS else PillTone.NEUTRAL
                         )
                     }
@@ -372,6 +389,23 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
     val bill = selectedBill
     if (bill != null) {
         val billPayments = state.payments.filter { it.billId == bill.id }
+        val monthDisplay = localizedMonth(bill.billingMonth)
+        val shareChooser = lStr(R.string.share_bill_chooser)
+        val shareSummary = lStr(
+            R.string.share_bill_text,
+            state.mess.name,
+            state.customer.fullName,
+            monthDisplay,
+            TiffinBusinessLogic.formatCurrency(bill.subscriptionCharge, state.mess.currency),
+            bill.extraTiffinCount,
+            TiffinBusinessLogic.formatCurrency(bill.extraTiffinCharge, state.mess.currency),
+            TiffinBusinessLogic.formatCurrency(bill.previousBalance, state.mess.currency),
+            TiffinBusinessLogic.formatCurrency(bill.discountAmount, state.mess.currency),
+            TiffinBusinessLogic.formatCurrency(bill.totalAmount, state.mess.currency),
+            TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency),
+            TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency),
+            bill.status.localizedLabel()
+        )
         ModalBottomSheet(onDismissRequest = { selectedBill = null }) {
             Column(
                 modifier = Modifier
@@ -388,7 +422,7 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                         Icon(Icons.Outlined.ReceiptLong, contentDescription = null, tint = SkyPrimary)
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "Bill Details — ${TiffinBusinessLogic.formatMonthDisplay(bill.billingMonth)}",
+                            text = lStr(R.string.bill_details_title, monthDisplay),
                             style = MaterialTheme.typography.titleLarge,
                             color = DeepBlueText
                         )
@@ -396,24 +430,25 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
                 }
                 Text("${state.customer.fullName} • ${state.mess.name}", style = MaterialTheme.typography.bodyMedium)
                 HorizontalDivider()
-                BillLine("Subscription Charge", TiffinBusinessLogic.formatCurrency(bill.subscriptionCharge, state.mess.currency))
+                BillLine(lStr(R.string.bill_sub_charge), TiffinBusinessLogic.formatCurrency(bill.subscriptionCharge, state.mess.currency))
                 BillLine(
-                    "Extra Tiffins (${bill.extraTiffinCount})",
+                    lStr(R.string.bill_extra_tiffins, bill.extraTiffinCount),
                     TiffinBusinessLogic.formatCurrency(bill.extraTiffinCharge, state.mess.currency)
                 )
-                BillLine("Previous Balance", TiffinBusinessLogic.formatCurrency(bill.previousBalance, state.mess.currency))
-                BillLine("Discount", "-${TiffinBusinessLogic.formatCurrency(bill.discountAmount, state.mess.currency)}")
+                BillLine(lStr(R.string.bill_prev_balance), TiffinBusinessLogic.formatCurrency(bill.previousBalance, state.mess.currency))
+                BillLine(lStr(R.string.bill_discount), "-${TiffinBusinessLogic.formatCurrency(bill.discountAmount, state.mess.currency)}")
                 HorizontalDivider()
-                BillLine("Total Payable", TiffinBusinessLogic.formatCurrency(bill.totalAmount, state.mess.currency), bold = true)
-                BillLine("Amount Paid", TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency), bold = true)
-                BillLine("Remaining Balance", TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency), bold = true)
+                BillLine(lStr(R.string.bill_total_payable), TiffinBusinessLogic.formatCurrency(bill.totalAmount, state.mess.currency), bold = true)
+                BillLine(lStr(R.string.bill_amount_paid), TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency), bold = true)
+                BillLine(lStr(R.string.bill_remaining_balance), TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency), bold = true)
 
                 if (billPayments.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
-                    Text("Payments for this bill", style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
+                    Text(lStr(R.string.bill_payments_list_title), style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
                     billPayments.forEach { p ->
+                        val pStatusLabel = if (p.status == PaymentStatus.CONFIRMED) lStr(R.string.payment_confirmed) else lStr(R.string.payment_reversed)
                         Text(
-                            "• ${TiffinBusinessLogic.formatCurrency(p.amount, state.mess.currency)} (${p.paymentMethod.label}) — ${p.status.name.lowercase()}",
+                            text = "• ${TiffinBusinessLogic.formatCurrency(p.amount, state.mess.currency)} (${p.paymentMethod.localizedLabel()}) — $pStatusLabel",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -421,28 +456,14 @@ fun CustomerPaymentsScreen(state: CustomerUiState) {
 
                 Spacer(Modifier.height(6.dp))
                 SkyPrimaryButton(
-                    text = "Share / Download Bill Summary",
+                    text = lStr(R.string.share_bill_btn),
                     icon = Icons.Outlined.Share,
                     onClick = {
-                        val summary = buildString {
-                            appendLine("Tiffin Mess — Monthly Bill")
-                            appendLine("Mess: ${state.mess.name}")
-                            appendLine("Customer: ${state.customer.fullName}")
-                            appendLine("Month: ${TiffinBusinessLogic.formatMonthDisplay(bill.billingMonth)}")
-                            appendLine("Subscription: ${TiffinBusinessLogic.formatCurrency(bill.subscriptionCharge, state.mess.currency)}")
-                            appendLine("Extra Tiffins (${bill.extraTiffinCount}): ${TiffinBusinessLogic.formatCurrency(bill.extraTiffinCharge, state.mess.currency)}")
-                            appendLine("Previous Balance: ${TiffinBusinessLogic.formatCurrency(bill.previousBalance, state.mess.currency)}")
-                            appendLine("Discount: ${TiffinBusinessLogic.formatCurrency(bill.discountAmount, state.mess.currency)}")
-                            appendLine("Total Payable: ${TiffinBusinessLogic.formatCurrency(bill.totalAmount, state.mess.currency)}")
-                            appendLine("Paid: ${TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency)}")
-                            appendLine("Balance Due: ${TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency)}")
-                            appendLine("Status: ${bill.status.name}")
-                        }
                         val intent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, summary)
+                            putExtra(Intent.EXTRA_TEXT, shareSummary)
                         }
-                        context.startActivity(Intent.createChooser(intent, "Share Monthly Bill"))
+                        context.startActivity(Intent.createChooser(intent, shareChooser))
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -463,11 +484,15 @@ private fun BillLine(label: String, amount: String, bold: Boolean = false) {
 @Composable
 fun CustomerProfileScreen(
     state: CustomerUiState,
-    onUpdateProfile: (fullName: String, phone: String, addressOrRoom: String) -> Unit,
+    currentLanguage: AppLanguage = AppLanguage.DEFAULT,
+    onSelectLanguage: (AppLanguage) -> Unit = {},
+    onUpdateProfile: (fullName: String, phone: String, addressOrRoom: String, area: String, city: String) -> Unit,
     onSignOut: () -> Unit
 ) {
     var fullName by remember(state.customer.fullName) { mutableStateOf(state.customer.fullName) }
     var phone by remember(state.customer.phone) { mutableStateOf(state.customer.phone) }
+    var area by remember(state.profile.area) { mutableStateOf(state.profile.area) }
+    var city by remember(state.profile.city) { mutableStateOf(state.profile.city) }
     var address by remember(state.customer.addressOrRoom) { mutableStateOf(state.customer.addressOrRoom) }
 
     LazyColumn(
@@ -476,7 +501,8 @@ fun CustomerProfileScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("My Profile", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.my_profile_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.my_profile_sub), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
         }
 
         item {
@@ -492,7 +518,7 @@ fun CustomerProfileScreen(
                         if (!state.profile.avatarUrl.isNullOrBlank()) {
                             AsyncImage(
                                 model = state.profile.avatarUrl,
-                                contentDescription = "Google Avatar",
+                                contentDescription = lStr(R.string.profile_photo_cd),
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
@@ -505,7 +531,7 @@ fun CustomerProfileScreen(
                         Text(state.customer.fullName, style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                         Text(state.profile.email, style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(4.dp))
-                        StatusPill(label = "Active Customer • ${state.mess.name}", tone = PillTone.SUCCESS)
+                        StatusPill(label = lStr(R.string.active_customer_pill, state.mess.name), tone = PillTone.SUCCESS)
                     }
                 }
             }
@@ -524,12 +550,12 @@ fun CustomerProfileScreen(
 
         item {
             GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
-                Text("Personal Details", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                Text(lStr(R.string.personal_details_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = fullName,
                     onValueChange = { fullName = it },
-                    label = { Text("Full Name") },
+                    label = { Text(lStr(R.string.field_full_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -537,27 +563,58 @@ fun CustomerProfileScreen(
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
-                    label = { Text("Mobile Number") },
+                    label = { Text(lStr(R.string.field_mobile)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = area,
+                        onValueChange = { area = it },
+                        label = { Text(lStr(R.string.field_area_req)) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("customer_profile_area_input")
+                    )
+                    OutlinedTextField(
+                        value = city,
+                        onValueChange = { city = it },
+                        label = { Text(lStr(R.string.field_city_req)) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("customer_profile_city_input")
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
-                    label = { Text("Room / Hostel / Address") },
+                    label = { Text(lStr(R.string.field_room_hostel)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(14.dp))
                 SkyPrimaryButton(
-                    text = "Save Profile",
-                    onClick = { onUpdateProfile(fullName, phone, address) },
+                    text = lStr(R.string.save_profile_btn),
+                    onClick = { onUpdateProfile(fullName, phone, address, area, city) },
                     loading = state.isActionBusy,
                     modifier = Modifier.fillMaxWidth().testTag("save_customer_profile_button")
                 )
             }
+        }
+
+        item {
+            LanguageSettingsCard(
+                selectedLanguage = currentLanguage,
+                onSelectLanguage = onSelectLanguage
+            )
         }
 
         item {
@@ -567,7 +624,7 @@ fun CustomerProfileScreen(
             ) {
                 Icon(Icons.Outlined.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Sign Out")
+                Text(lStr(R.string.action_sign_out))
             }
         }
     }

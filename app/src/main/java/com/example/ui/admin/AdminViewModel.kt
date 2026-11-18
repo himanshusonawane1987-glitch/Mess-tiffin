@@ -3,9 +3,15 @@ package com.example.ui.admin
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.R
 import com.example.data.TiffinRepository
+import com.example.ui.theme.AppStrings
+import com.example.domain.AdminCustomerMarkStatus
+import com.example.domain.AdminDailyCustomerSummary
+import com.example.domain.AdminDayTotals
 import com.example.domain.AdminInvitation
 import com.example.domain.BillStatus
+import com.example.domain.CustomerDailyMark
 import com.example.domain.CustomerProfile
 import com.example.domain.DailyMenu
 import com.example.domain.Mess
@@ -19,6 +25,7 @@ import com.example.domain.Subscription
 import com.example.domain.SubscriptionPlan
 import com.example.domain.SubscriptionStatus
 import com.example.domain.TiffinBusinessLogic
+import com.example.domain.TiffinLeave
 import com.example.domain.TiffinRecord
 import com.example.domain.TiffinStatus
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +53,9 @@ data class AdminUiState(
     val renewalRequests: List<RenewalRequest> = emptyList(),
     val dailyTiffins: List<TiffinRecord> = emptyList(),
     val monthTiffins: List<TiffinRecord> = emptyList(),
+    val dailyMarks: List<CustomerDailyMark> = emptyList(),
+    val monthDailyMarks: List<CustomerDailyMark> = emptyList(),
+    val leaves: List<TiffinLeave> = emptyList(),
     val menus: List<DailyMenu> = emptyList(),
     val bills: List<MonthlyBill> = emptyList(),
     val payments: List<Payment> = emptyList(),
@@ -93,14 +103,41 @@ data class AdminUiState(
 
     val monthlyOverdueBalance: Double
         get() = monthBills.filter { it.status == BillStatus.OVERDUE }.sumOf { it.balanceDue }
+
+    val dailyCustomerSummaries: Map<String, AdminDailyCustomerSummary>
+        get() {
+            val dateIso = selectedDate.toString()
+            val combinedMarks = (monthDailyMarks + dailyMarks)
+                .distinctBy { "${it.customerId}_${it.serviceDate}" }
+            return TiffinBusinessLogic.buildAdminDailyCustomerSummaries(
+                customers = customers,
+                dateIso = dateIso,
+                dailyMarks = combinedMarks,
+                leaves = leaves,
+                monthTiffins = monthTiffins,
+                subscriptions = subscriptions,
+                mess = mess
+            )
+        }
+
+    val dayTotals: AdminDayTotals
+        get() = TiffinBusinessLogic.computeAdminDayTotals(
+            activeCustomers = activeCustomers,
+            summaries = dailyCustomerSummaries,
+            dailyTiffins = dailyTiffins,
+            dateIso = selectedDate.toString()
+        )
 }
 
 class AdminViewModel(
     private val repository: TiffinRepository,
     initialProfile: Profile,
     initialMess: Mess,
-    initialIsOwner: Boolean
+    initialIsOwner: Boolean,
+    private val strings: AppStrings? = null
 ) : ViewModel() {
+
+    private fun str(resId: Int, vararg args: Any): String = strings?.get(resId, *args) ?: ""
 
     private val initialToday = TiffinBusinessLogic.messToday(initialMess.timezone)
     private val initialMonth = TiffinBusinessLogic.messYearMonth(initialMess.timezone)
@@ -125,7 +162,14 @@ class AdminViewModel(
         viewModelScope.launch {
             repository.observeMessRealtime(
                 messId = _uiState.value.mess.id,
-                tables = listOf("registration_requests", "tiffin_records", "daily_menus", "monthly_bills")
+                tables = listOf(
+                    "registration_requests",
+                    "tiffin_records",
+                    "daily_menus",
+                    "monthly_bills",
+                    "customer_daily_marks",
+                    "tiffin_leaves"
+                )
             ).collect {
                 refreshAll(silent = true)
             }
@@ -148,6 +192,9 @@ class AdminViewModel(
             val renewalsRes = repository.getMessRenewalRequests(messId)
             val dailyTiffinsRes = repository.getMessTiffinsForDate(messId, dateIso)
             val monthTiffinsRes = repository.getMessTiffinsForRange(messId, monthStart, monthEnd)
+            val dailyMarksRes = repository.getMessDailyMarksForDate(messId, dateIso)
+            val monthMarksRes = repository.getMessDailyMarksForRange(messId, monthStart, monthEnd)
+            val leavesRes = repository.getMessLeaves(messId)
             val menusRes = repository.getAllMessMenus(messId)
             val billsRes = repository.getMessBills(messId)
             val paymentsRes = repository.getMessPayments(messId)
@@ -167,6 +214,9 @@ class AdminViewModel(
                     renewalRequests = renewalsRes.getOrDefault(state.renewalRequests),
                     dailyTiffins = dailyTiffinsRes.getOrDefault(state.dailyTiffins),
                     monthTiffins = monthTiffinsRes.getOrDefault(state.monthTiffins),
+                    dailyMarks = dailyMarksRes.getOrDefault(state.dailyMarks),
+                    monthDailyMarks = monthMarksRes.getOrDefault(state.monthDailyMarks),
+                    leaves = leavesRes.getOrDefault(state.leaves),
                     menus = menusRes.getOrDefault(state.menus),
                     bills = billsRes.getOrDefault(state.bills),
                     payments = paymentsRes.getOrDefault(state.payments),
@@ -191,29 +241,36 @@ class AdminViewModel(
     }
 
     fun reviewRegistrationRequest(requestId: String, approve: Boolean) {
-        runAction(if (approve) "Customer approved." else "Registration rejected.") {
+        val msg = if (approve) {
+            str(R.string.msg_customer_approved).ifBlank { "Customer approved." }
+        } else {
+            str(R.string.msg_registration_rejected).ifBlank { "Registration rejected." }
+        }
+        runAction(msg) {
             repository.reviewRegistrationRequest(requestId, approve)
         }
     }
 
     fun createCustomer(fullName: String, phone: String, email: String?, addressOrRoom: String) {
         if (fullName.isBlank() || phone.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Name and mobile number are required.") }
+            _uiState.update {
+                it.copy(errorMessage = str(R.string.err_name_mobile_req).ifBlank { "Name and mobile number are required." })
+            }
             return
         }
-        runAction("Customer added.") {
+        runAction(str(R.string.msg_customer_added).ifBlank { "Customer added." }) {
             repository.adminCreateCustomer(_uiState.value.mess.id, fullName, phone, email, addressOrRoom)
         }
     }
 
     fun updateCustomerDetails(customerId: String, fullName: String, phone: String, addressOrRoom: String) {
-        runAction("Customer details updated.") {
+        runAction(str(R.string.msg_customer_details_updated).ifBlank { "Customer details updated." }) {
             repository.adminUpdateCustomerDetails(customerId, fullName, phone, addressOrRoom)
         }
     }
 
     fun updateCustomerStatus(customerId: String, newStatus: String) {
-        runAction("Customer status updated to $newStatus.") {
+        runAction(str(R.string.msg_customer_status_updated).ifBlank { "Customer status updated." }) {
             repository.adminUpdateCustomerStatus(customerId, newStatus)
         }
     }
@@ -225,15 +282,54 @@ class AdminViewModel(
         status: TiffinStatus,
         note: String? = null
     ) {
-        runAction("Tiffin marked as ${status.name.lowercase().replace('_', ' ')}.") {
+        runAction(str(R.string.msg_tiffin_marked).ifBlank { "Tiffin record updated." }) {
             repository.upsertTiffinRecord(customerId, dateIso, mealSlot, status, note)
         }
     }
 
     fun bulkMarkDelivered(customerIds: List<String>, dateIso: String, mealSlot: String) {
         if (customerIds.isEmpty()) return
-        runAction("Marked ${customerIds.size} tiffins as delivered.") {
+        runAction(str(R.string.msg_bulk_delivered).ifBlank { "Marked eligible tiffins as delivered." }) {
             repository.bulkMarkTiffinsDelivered(_uiState.value.mess.id, customerIds, dateIso, mealSlot)
+        }
+    }
+
+    fun createLeaveForCustomer(
+        customerId: String,
+        startDateIso: String,
+        endDateIso: String,
+        reason: String
+    ) {
+        val parsed = runCatching {
+            LocalDate.parse(startDateIso.trim()) to LocalDate.parse(endDateIso.trim())
+        }
+        if (parsed.isFailure) {
+            _uiState.update {
+                it.copy(errorMessage = str(R.string.err_valid_dates).ifBlank { "Enter valid dates in YYYY-MM-DD format." })
+            }
+            return
+        }
+        val (start, end) = parsed.getOrThrow()
+        if (end.isBefore(start)) {
+            _uiState.update {
+                it.copy(errorMessage = str(R.string.err_end_before_start).ifBlank { "End date must be on or after start date." })
+            }
+            return
+        }
+        runAction(str(R.string.msg_leave_added_customer).ifBlank { "Leave added for customer." }) {
+            repository.createTiffinLeave(
+                messId = _uiState.value.mess.id,
+                customerId = customerId,
+                startDateIso = start.toString(),
+                endDateIso = end.toString(),
+                reason = reason
+            )
+        }
+    }
+
+    fun cancelCustomerLeave(leaveId: String) {
+        runAction(str(R.string.msg_leave_cancelled).ifBlank { "Leave cancelled." }) {
+            repository.cancelTiffinLeave(leaveId)
         }
     }
 
@@ -246,7 +342,12 @@ class AdminViewModel(
         notes: String?,
         publish: Boolean
     ) {
-        runAction(if (publish) "Menu published for $dateIso." else "Draft menu saved.") {
+        val msg = if (publish) {
+            str(R.string.msg_menu_published, dateIso).ifBlank { "Menu published for $dateIso." }
+        } else {
+            str(R.string.msg_menu_draft_saved).ifBlank { "Draft menu saved." }
+        }
+        runAction(msg) {
             repository.saveMenu(
                 messId = _uiState.value.mess.id,
                 menuDateIso = dateIso,
@@ -269,7 +370,7 @@ class AdminViewModel(
         mealSlots: List<String>,
         extraTiffinPrice: Double
     ) {
-        runAction("Subscription plan created.") {
+        runAction(str(R.string.msg_plan_created).ifBlank { "Subscription plan created." }) {
             repository.createSubscriptionPlan(
                 messId = _uiState.value.mess.id,
                 name = name,
@@ -293,7 +394,7 @@ class AdminViewModel(
         mealSlots: List<String>,
         agreedPrice: Double
     ) {
-        runAction("Subscription assigned.") {
+        runAction(str(R.string.msg_sub_assigned).ifBlank { "Subscription assigned." }) {
             repository.assignSubscription(
                 messId = _uiState.value.mess.id,
                 customerId = customerId,
@@ -311,13 +412,18 @@ class AdminViewModel(
     }
 
     fun updateSubscriptionStatus(subscriptionId: String, status: SubscriptionStatus) {
-        runAction("Subscription updated.") {
+        runAction(str(R.string.msg_sub_updated).ifBlank { "Subscription updated." }) {
             repository.updateSubscriptionStatus(subscriptionId, status)
         }
     }
 
     fun reviewRenewalRequest(requestId: String, approve: Boolean) {
-        runAction(if (approve) "Renewal request approved." else "Renewal request declined.") {
+        val msg = if (approve) {
+            str(R.string.msg_renewal_approved).ifBlank { "Renewal request approved." }
+        } else {
+            str(R.string.msg_renewal_declined).ifBlank { "Renewal request declined." }
+        }
+        runAction(msg) {
             repository.reviewRenewalRequest(requestId, approve, _uiState.value.profile.id)
         }
     }
@@ -328,19 +434,19 @@ class AdminViewModel(
         discountAmount: Double,
         previousBalance: Double
     ) {
-        runAction("Monthly bill generated.") {
+        runAction(str(R.string.msg_bill_generated).ifBlank { "Monthly bill generated." }) {
             repository.generateMonthlyBill(customerId, billingMonthIso, discountAmount, previousBalance)
         }
     }
 
     fun recordPayment(billId: String, amount: Double, method: PaymentMethod, referenceNote: String?) {
-        runAction("Payment recorded.") {
+        runAction(str(R.string.msg_payment_recorded).ifBlank { "Payment recorded." }) {
             repository.recordPayment(billId, amount, method, referenceNote)
         }
     }
 
     fun reversePayment(paymentId: String, reason: String) {
-        runAction("Payment reversed and bill balance recalculated.") {
+        runAction(str(R.string.msg_payment_reversed).ifBlank { "Payment reversed and bill balance recalculated." }) {
             repository.reversePayment(paymentId, reason)
         }
     }
@@ -351,32 +457,60 @@ class AdminViewModel(
         address: String,
         currency: String,
         defaultDueDay: Int,
-        mealSlots: List<String>
+        mealSlots: List<String>,
+        dailyMarkCutoffTime: String = _uiState.value.mess.dailyMarkCutoffTime
     ) {
+        val trimmedCutoff = dailyMarkCutoffTime.trim()
+        if (!TiffinBusinessLogic.isValidCutoffTime(trimmedCutoff)) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = str(R.string.err_cutoff_format)
+                        .ifBlank { "Cutoff time must be in 24h HH:mm format (e.g. 10:00)." }
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isActionBusy = true, errorMessage = null, successMessage = null) }
-            repository.updateMessSettings(_uiState.value.mess.id, name, phone, address, currency, defaultDueDay, mealSlots)
-                .fold(
-                    onSuccess = { updatedMess ->
-                        _uiState.update {
-                            it.copy(isActionBusy = false, mess = updatedMess, successMessage = "Mess settings saved.")
-                        }
-                    },
-                    onFailure = { err ->
-                        _uiState.update { it.copy(isActionBusy = false, errorMessage = err.message ?: "Update failed.") }
+            repository.updateMessSettings(
+                messId = _uiState.value.mess.id,
+                name = name,
+                phone = phone,
+                address = address,
+                currency = currency,
+                defaultDueDay = defaultDueDay,
+                mealSlots = mealSlots,
+                dailyMarkCutoffTime = trimmedCutoff
+            ).fold(
+                onSuccess = { updatedMess ->
+                    _uiState.update {
+                        it.copy(
+                            isActionBusy = false,
+                            mess = updatedMess,
+                            successMessage = str(R.string.msg_mess_settings_saved).ifBlank { "Mess settings saved." }
+                        )
                     }
-                )
+                },
+                onFailure = { err ->
+                    _uiState.update {
+                        it.copy(
+                            isActionBusy = false,
+                            errorMessage = err.message ?: str(R.string.err_update_failed).ifBlank { "Update failed." }
+                        )
+                    }
+                }
+            )
         }
     }
 
     fun rotateRegistrationCode(newCode: String) {
-        runAction("Mess registration code updated.") {
+        runAction(str(R.string.msg_code_updated).ifBlank { "Mess registration code updated." }) {
             repository.ownerUpdateRegistrationCode(_uiState.value.mess.id, newCode)
         }
     }
 
     fun inviteAdmin(email: String) {
-        runAction("Admin invitation created for $email.") {
+        runAction(str(R.string.msg_admin_invited, email).ifBlank { "Admin invitation created for $email." }) {
             repository.ownerInviteAdmin(_uiState.value.mess.id, email)
         }
     }
@@ -391,7 +525,10 @@ class AdminViewModel(
                 },
                 onFailure = { err ->
                     _uiState.update {
-                        it.copy(isActionBusy = false, errorMessage = err.message ?: "Operation failed.")
+                        it.copy(
+                            isActionBusy = false,
+                            errorMessage = err.message ?: str(R.string.err_operation_failed).ifBlank { "Operation failed." }
+                        )
                     }
                 }
             )
@@ -402,11 +539,12 @@ class AdminViewModel(
         private val repository: TiffinRepository,
         private val profile: Profile,
         private val mess: Mess,
-        private val isOwner: Boolean
+        private val isOwner: Boolean,
+        private val strings: AppStrings? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return AdminViewModel(repository, profile, mess, isOwner) as T
+            return AdminViewModel(repository, profile, mess, isOwner, strings) as T
         }
     }
 }

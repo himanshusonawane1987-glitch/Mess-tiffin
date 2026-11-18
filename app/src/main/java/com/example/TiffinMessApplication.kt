@@ -6,11 +6,20 @@ import com.example.data.SupabaseAuthClient
 import com.example.data.SupabaseRealtimeClient
 import com.example.data.SupabaseRestClient
 import com.example.data.TiffinRepository
+import com.example.domain.AppLanguage
+import com.example.ui.theme.AppStrings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 class AppContainer(application: Application) {
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     val json: Json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -30,6 +39,17 @@ class AppContainer(application: Application) {
     val restClient = SupabaseRestClient(httpClient, authClient, json)
     val realtimeClient = SupabaseRealtimeClient(httpClient, authClient)
     val repository = TiffinRepository(restClient, sessionStore, realtimeClient)
+
+    val activeLanguage = MutableStateFlow(AppLanguage.DEFAULT)
+    val appStrings = AppStrings(application) { activeLanguage.value }
+
+    init {
+        appScope.launch {
+            sessionStore.observeLanguage().collect { lang ->
+                activeLanguage.value = lang
+            }
+        }
+    }
 }
 
 class TiffinMessApplication : Application() {

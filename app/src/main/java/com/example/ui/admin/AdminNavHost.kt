@@ -18,9 +18,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.R
+import com.example.domain.AppLanguage
 import com.example.ui.theme.GlassBackdrop
 import com.example.ui.theme.GlassBottomNavBar
 import com.example.ui.theme.NavTabItem
+import com.example.ui.theme.lStr
 import kotlinx.serialization.Serializable
 
 @Serializable data object AdminDashboardRoute
@@ -35,6 +38,8 @@ import kotlinx.serialization.Serializable
 @Composable
 fun AdminShell(
     viewModel: AdminViewModel,
+    currentLanguage: AppLanguage = AppLanguage.DEFAULT,
+    onSelectLanguage: (AppLanguage) -> Unit = {},
     onSignOut: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -43,11 +48,11 @@ fun AdminShell(
     val currentRouteName = backStackEntry?.destination?.route ?: ""
 
     val tabs = listOf(
-        NavTabItem("dashboard", "Dashboard", Icons.Outlined.Dashboard, "admin_tab_dashboard"),
-        NavTabItem("customers", "Customers", Icons.Outlined.Groups, "admin_tab_customers"),
-        NavTabItem("tiffins", "Tiffins", Icons.Outlined.LunchDining, "admin_tab_tiffins"),
-        NavTabItem("billing", "Billing", Icons.Outlined.Payments, "admin_tab_billing"),
-        NavTabItem("profile", "Profile", Icons.Outlined.Person, "admin_tab_profile")
+        NavTabItem("dashboard", lStr(R.string.admin_nav_dashboard), Icons.Outlined.Dashboard, "admin_tab_dashboard"),
+        NavTabItem("customers", lStr(R.string.admin_nav_customers), Icons.Outlined.Groups, "admin_tab_customers"),
+        NavTabItem("tiffins", lStr(R.string.admin_nav_tiffins), Icons.Outlined.LunchDining, "admin_tab_tiffins"),
+        NavTabItem("billing", lStr(R.string.admin_nav_billing), Icons.Outlined.Payments, "admin_tab_billing"),
+        NavTabItem("profile", lStr(R.string.admin_nav_profile), Icons.Outlined.Person, "admin_tab_profile")
     )
 
     val selectedTab = when {
@@ -105,7 +110,9 @@ fun AdminShell(
                         onUpdateCustomerDetails = viewModel::updateCustomerDetails,
                         onUpdateCustomerStatus = viewModel::updateCustomerStatus,
                         onOpenBillingForCustomer = { navigateTab("billing") },
-                        onOpenSubscriptionsForCustomer = { navController.navigate(AdminSubscriptionsRoute) }
+                        onOpenSubscriptionsForCustomer = { navController.navigate(AdminSubscriptionsRoute) },
+                        onCreateLeave = viewModel::createLeaveForCustomer,
+                        onCancelLeave = viewModel::cancelCustomerLeave
                     )
                 }
                 composable<AdminTiffinsRoute> {
@@ -113,7 +120,9 @@ fun AdminShell(
                         state = state,
                         onSelectDate = viewModel::selectDate,
                         onMarkTiffin = viewModel::markTiffin,
-                        onBulkMarkDelivered = viewModel::bulkMarkDelivered
+                        onBulkMarkDelivered = viewModel::bulkMarkDelivered,
+                        onCreateLeave = viewModel::createLeaveForCustomer,
+                        onCancelLeave = viewModel::cancelCustomerLeave
                     )
                 }
                 composable<AdminBillingRoute> {
@@ -128,6 +137,8 @@ fun AdminShell(
                 composable<AdminProfileRoute> {
                     AdminProfileSettingsScreen(
                         state = state,
+                        currentLanguage = currentLanguage,
+                        onSelectLanguage = onSelectLanguage,
                         onUpdateMessSettings = viewModel::updateMessSettings,
                         onRotateCode = viewModel::rotateRegistrationCode,
                         onInviteAdmin = viewModel::inviteAdmin,

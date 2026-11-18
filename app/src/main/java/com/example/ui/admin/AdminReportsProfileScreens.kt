@@ -39,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.R
+import com.example.domain.AppLanguage
 import com.example.domain.SubscriptionStatus
 import com.example.domain.TiffinBusinessLogic
 import com.example.domain.TiffinStatus
@@ -46,15 +48,19 @@ import com.example.ui.auth.ErrorNoticeCard
 import com.example.ui.theme.DeepBlueText
 import com.example.ui.theme.ErrorCoral
 import com.example.ui.theme.GlassCard
+import com.example.ui.theme.LanguageSettingsCard
 import com.example.ui.theme.MetricValueCard
 import com.example.ui.theme.PillTone
 import com.example.ui.theme.SecondaryText
 import com.example.ui.theme.SkyPrimaryButton
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.lStr
+import com.example.ui.theme.localizedDate
+import com.example.ui.theme.localizedMealSlot
+import com.example.ui.theme.localizedMonthTitle
+import com.example.ui.theme.localizedStatusText
 import java.time.YearMonth
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun AdminReportsScreen(
@@ -62,7 +68,7 @@ fun AdminReportsScreen(
     onBack: () -> Unit,
     onSelectMonth: (YearMonth) -> Unit
 ) {
-    val monthTitle = state.selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH))
+    val monthTitle = localizedMonthTitle(state.selectedMonth)
     val totalMonthDelivered = state.monthTiffins.count { it.status == TiffinStatus.DELIVERED }
     val activeSubsCount = state.subscriptions.count { it.status == SubscriptionStatus.ACTIVE || it.status == SubscriptionStatus.EXPIRING_SOON }
     val expiredSubsCount = state.subscriptions.count { it.status == SubscriptionStatus.EXPIRED }
@@ -78,11 +84,11 @@ fun AdminReportsScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack, modifier = Modifier.minimumInteractiveComponentSize()) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", tint = DeepBlueText)
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = lStr(R.string.action_back), tint = DeepBlueText)
                 }
                 Column {
-                    Text("Reports", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
-                    Text("Live daily & monthly operational metrics.", style = MaterialTheme.typography.bodyMedium)
+                    Text(lStr(R.string.reports_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+                    Text(lStr(R.string.reports_sub), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
                 }
             }
         }
@@ -91,43 +97,43 @@ fun AdminReportsScreen(
             GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { onSelectMonth(state.selectedMonth.minusMonths(1)) }) {
-                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = "Previous month")
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = lStr(R.string.action_prev_month))
                     }
                     Text(monthTitle, style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                     IconButton(onClick = { onSelectMonth(state.selectedMonth.plusMonths(1)) }) {
-                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Next month")
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = lStr(R.string.action_next_month))
                     }
                 }
             }
         }
 
-        item { Text("Daily Report (${TiffinBusinessLogic.formatDateDisplay(state.selectedDate.toString())})", style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
+        item { Text(lStr(R.string.daily_report_title, localizedDate(state.selectedDate.toString())), style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricValueCard("Expected", state.expectedTiffinsToday.toString(), modifier = Modifier.weight(1f))
-                MetricValueCard("Delivered", state.deliveredTodayCount.toString(), accentColor = SuccessGreen, modifier = Modifier.weight(1f))
-                MetricValueCard("Completion", "${state.completionRatePercent}%", modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_expected), state.expectedTiffinsToday.toString(), modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_delivered), state.deliveredTodayCount.toString(), accentColor = SuccessGreen, modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_completion), "${state.completionRatePercent}%", modifier = Modifier.weight(1f))
             }
         }
 
-        item { Text("Monthly Report ($monthTitle)", style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
+        item { Text(lStr(R.string.monthly_report_title, monthTitle), style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricValueCard("Delivered Tiffins", totalMonthDelivered.toString(), accentColor = SuccessGreen, modifier = Modifier.weight(1f))
-                MetricValueCard("Active Plans", activeSubsCount.toString(), modifier = Modifier.weight(1f))
-                MetricValueCard("Expired Plans", expiredSubsCount.toString(), accentColor = ErrorCoral, modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_delivered_tiffins), totalMonthDelivered.toString(), accentColor = SuccessGreen, modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_active_plans), activeSubsCount.toString(), modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_expired_plans), expiredSubsCount.toString(), accentColor = ErrorCoral, modifier = Modifier.weight(1f))
             }
         }
 
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricValueCard("Expected Billing", TiffinBusinessLogic.formatCurrency(state.monthlyExpectedRevenue, state.mess.currency), modifier = Modifier.weight(1f))
-                MetricValueCard("Collected", TiffinBusinessLogic.formatCurrency(state.monthlyCollected, state.mess.currency), accentColor = SuccessGreen, modifier = Modifier.weight(1f))
-                MetricValueCard("Outstanding", TiffinBusinessLogic.formatCurrency(state.monthlyPendingBalance + state.monthlyOverdueBalance, state.mess.currency), accentColor = ErrorCoral, modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_total_billed), TiffinBusinessLogic.formatCurrency(state.monthlyExpectedRevenue, state.mess.currency), modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_paid_received), TiffinBusinessLogic.formatCurrency(state.monthlyCollected, state.mess.currency), accentColor = SuccessGreen, modifier = Modifier.weight(1f))
+                MetricValueCard(lStr(R.string.metric_yet_to_collect), TiffinBusinessLogic.formatCurrency(state.monthlyPendingBalance + state.monthlyOverdueBalance, state.mess.currency), accentColor = ErrorCoral, modifier = Modifier.weight(1f))
             }
         }
 
-        item { Text("Customer-wise Tiffin Count", style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
+        item { Text(lStr(R.string.customer_wise_count), style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
         items(state.customers, key = { it.id }) { c ->
             val count = deliveredByCustomer[c.id] ?: 0
             GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -136,7 +142,7 @@ fun AdminReportsScreen(
                         Text(c.fullName, style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
                         Text(c.phone, style = MaterialTheme.typography.bodyMedium)
                     }
-                    StatusPill(label = "$count delivered", tone = if (count > 0) PillTone.SUCCESS else PillTone.NEUTRAL)
+                    StatusPill(label = lStr(R.string.count_delivered_pill, count), tone = if (count > 0) PillTone.SUCCESS else PillTone.NEUTRAL)
                 }
             }
         }
@@ -146,13 +152,16 @@ fun AdminReportsScreen(
 @Composable
 fun AdminProfileSettingsScreen(
     state: AdminUiState,
+    currentLanguage: AppLanguage = AppLanguage.DEFAULT,
+    onSelectLanguage: (AppLanguage) -> Unit = {},
     onUpdateMessSettings: (
         name: String,
         phone: String,
         address: String,
         currency: String,
         defaultDueDay: Int,
-        mealSlots: List<String>
+        mealSlots: List<String>,
+        dailyMarkCutoffTime: String
     ) -> Unit,
     onRotateCode: (newCode: String) -> Unit,
     onInviteAdmin: (email: String) -> Unit,
@@ -163,6 +172,7 @@ fun AdminProfileSettingsScreen(
     var messAddress by remember(state.mess.address) { mutableStateOf(state.mess.address) }
     var currency by remember(state.mess.currency) { mutableStateOf(state.mess.currency) }
     var dueDay by remember(state.mess.defaultDueDay) { mutableStateOf(state.mess.defaultDueDay.toString()) }
+    var cutoffTime by remember(state.mess.dailyMarkCutoffTime) { mutableStateOf(state.mess.dailyMarkCutoffTime) }
     val selectedSlots = remember(state.mess.mealSlots) {
         mutableStateListOf<String>().apply { addAll(state.mess.mealSlots) }
     }
@@ -175,7 +185,8 @@ fun AdminProfileSettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Admin Profile & Settings", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.mess_settings_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.mess_settings_sub), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
         }
 
         if (!state.errorMessage.isNullOrBlank()) item { ErrorNoticeCard(state.errorMessage) }
@@ -189,7 +200,7 @@ fun AdminProfileSettingsScreen(
                 Text(state.profile.email, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(6.dp))
                 StatusPill(
-                    label = if (state.isOwner) "Mess Owner" else "Mess Admin",
+                    label = if (state.isOwner) lStr(R.string.mess_owner_pill) else lStr(R.string.mess_admin_pill),
                     tone = PillTone.INFO
                 )
             }
@@ -198,26 +209,34 @@ fun AdminProfileSettingsScreen(
         if (state.isOwner) {
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
-                    Text("Mess Configuration (Owner)", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                    Text(lStr(R.string.mess_details_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                     Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(value = messName, onValueChange = { messName = it }, label = { Text("Mess Name") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = messName, onValueChange = { messName = it }, label = { Text(lStr(R.string.mess_name_label)) }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(value = messPhone, onValueChange = { messPhone = it }, label = { Text("Mess Phone") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = messPhone, onValueChange = { messPhone = it }, label = { Text(lStr(R.string.mess_phone_label)) }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(value = messAddress, onValueChange = { messAddress = it }, label = { Text("Mess Address") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = messAddress, onValueChange = { messAddress = it }, label = { Text(lStr(R.string.mess_address_label)) }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = currency, onValueChange = { currency = it }, label = { Text("Currency") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(value = currency, onValueChange = { currency = it }, label = { Text(lStr(R.string.currency_label)) }, modifier = Modifier.weight(1f))
                         OutlinedTextField(
                             value = dueDay,
                             onValueChange = { dueDay = it },
-                            label = { Text("Due Day (1-28)") },
+                            label = { Text(lStr(R.string.bill_due_day_label)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f)
                         )
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("Enabled Meal Slots", style = MaterialTheme.typography.labelMedium, color = SecondaryText)
+                    OutlinedTextField(
+                        value = cutoffTime,
+                        onValueChange = { cutoffTime = it },
+                        label = { Text(lStr(R.string.cutoff_time_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("admin_cutoff_time_input")
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(lStr(R.string.meals_you_serve), style = MaterialTheme.typography.labelMedium, color = SecondaryText)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("breakfast", "lunch", "dinner", "daily").forEach { slot ->
                             val active = selectedSlots.contains(slot)
@@ -227,13 +246,13 @@ fun AdminProfileSettingsScreen(
                                     if (active && selectedSlots.size > 1) selectedSlots.remove(slot)
                                     else if (!active) selectedSlots.add(slot)
                                 },
-                                label = { Text(slot.replaceFirstChar { it.uppercase() }) }
+                                label = { Text(localizedMealSlot(slot)) }
                             )
                         }
                     }
                     Spacer(Modifier.height(12.dp))
                     SkyPrimaryButton(
-                        text = "Save Mess Settings",
+                        text = lStr(R.string.save_mess_settings_btn),
                         onClick = {
                             onUpdateMessSettings(
                                 messName,
@@ -241,7 +260,8 @@ fun AdminProfileSettingsScreen(
                                 messAddress,
                                 currency,
                                 dueDay.toIntOrNull() ?: 5,
-                                selectedSlots.toList()
+                                selectedSlots.toList(),
+                                cutoffTime
                             )
                         },
                         loading = state.isActionBusy,
@@ -252,19 +272,19 @@ fun AdminProfileSettingsScreen(
 
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
-                    Text("Customer Registration Code", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
-                    Text("Rotate the secret mess code customers use to request membership.", style = MaterialTheme.typography.bodyMedium)
+                    Text(lStr(R.string.mess_join_code_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                    Text(lStr(R.string.mess_join_code_sub), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = newRegCode,
                         onValueChange = { newRegCode = it.uppercase() },
-                        label = { Text("New Registration Code (min 4 chars)") },
+                        label = { Text(lStr(R.string.new_join_code_label)) },
                         leadingIcon = { Icon(Icons.Outlined.Key, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(10.dp))
                     SkyPrimaryButton(
-                        text = "Update Registration Code",
+                        text = lStr(R.string.update_join_code_btn),
                         onClick = {
                             onRotateCode(newRegCode)
                             newRegCode = ""
@@ -277,19 +297,19 @@ fun AdminProfileSettingsScreen(
 
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
-                    Text("Admin Invitations (Owner Only)", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
-                    Text("Invited emails automatically receive Admin access when signing in with Google.", style = MaterialTheme.typography.bodyMedium)
+                    Text(lStr(R.string.add_helper_admin_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                    Text(lStr(R.string.add_helper_admin_sub), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = inviteEmail,
                         onValueChange = { inviteEmail = it },
-                        label = { Text("Admin Google Email") },
+                        label = { Text(lStr(R.string.admin_google_email_label)) },
                         leadingIcon = { Icon(Icons.Outlined.PersonAdd, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(10.dp))
                     SkyPrimaryButton(
-                        text = "Send Admin Invitation",
+                        text = lStr(R.string.send_admin_invite_btn),
                         onClick = {
                             onInviteAdmin(inviteEmail)
                             inviteEmail = ""
@@ -302,7 +322,7 @@ fun AdminProfileSettingsScreen(
                         state.adminInvitations.forEach { inv ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(inv.invitedEmail, style = MaterialTheme.typography.bodyMedium)
-                                StatusPill(inv.status, if (inv.status == "accepted") PillTone.SUCCESS else PillTone.INFO)
+                                StatusPill(localizedStatusText(inv.status), if (inv.status == "accepted") PillTone.SUCCESS else PillTone.INFO)
                             }
                             Spacer(Modifier.height(4.dp))
                         }
@@ -312,13 +332,20 @@ fun AdminProfileSettingsScreen(
         }
 
         item {
+            LanguageSettingsCard(
+                selectedLanguage = currentLanguage,
+                onSelectLanguage = onSelectLanguage
+            )
+        }
+
+        item {
             OutlinedButton(
                 onClick = onSignOut,
                 modifier = Modifier.fillMaxWidth().height(50.dp).testTag("admin_logout_button")
             ) {
                 Icon(Icons.Outlined.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Sign Out")
+                Text(lStr(R.string.action_sign_out))
             }
         }
     }

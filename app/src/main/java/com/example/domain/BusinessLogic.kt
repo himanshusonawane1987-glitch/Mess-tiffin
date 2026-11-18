@@ -1,8 +1,11 @@
 package com.example.domain
 
+import androidx.annotation.StringRes
+import com.example.R
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -27,6 +30,21 @@ data class BillComputation(
     val balanceDue: Double,
     val status: BillStatus
 )
+
+enum class OnboardingStep {
+    ROLE_CHOICE,
+    CUSTOMER_REGISTRATION,
+    SELLER_REGISTRATION,
+    SELLER_SUCCESS,
+    DISCOVERY,
+    SELLER_DETAIL
+}
+
+enum class OnboardingRoleChoice {
+    CUSTOMER,
+    SELLER,
+    BROWSE_NEARBY
+}
 
 sealed interface AuthRouteState {
     data object Loading : AuthRouteState
@@ -79,28 +97,28 @@ object TiffinBusinessLogic {
         }
     }
 
-    fun formatDateDisplay(isoDate: String): String {
+    fun formatDateDisplay(isoDate: String, locale: Locale = Locale.ENGLISH): String {
         return try {
-            LocalDate.parse(isoDate).format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy", Locale.ENGLISH))
+            LocalDate.parse(isoDate).format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy", locale))
         } catch (_: Exception) {
             isoDate
         }
     }
 
-    fun formatMonthDisplay(isoMonthDate: String): String {
+    fun formatMonthDisplay(isoMonthDate: String, locale: Locale = Locale.ENGLISH): String {
         return try {
             val date = LocalDate.parse(isoMonthDate)
-            date.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH))
+            date.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale))
         } catch (_: Exception) {
             isoMonthDate
         }
     }
 
-    fun formatTimeInMessZone(isoTimestamp: String?, timezone: String?): String? {
+    fun formatTimeInMessZone(isoTimestamp: String?, timezone: String?, locale: Locale = Locale.ENGLISH): String? {
         if (isoTimestamp.isNullOrBlank()) return null
         return try {
             val zdt = Instant.parse(isoTimestamp).atZone(safeZoneId(timezone))
-            zdt.format(DateTimeFormatter.ofPattern("hh:mm a", Locale.ENGLISH))
+            zdt.format(DateTimeFormatter.ofPattern("hh:mm a", locale))
         } catch (_: Exception) {
             null
         }
@@ -125,14 +143,29 @@ object TiffinBusinessLogic {
     /**
      * Centralized tiffin count & remaining allowance logic.
      * Only DELIVERED records count toward delivered/used tiffins.
-     * Cancelled and Not Delivered records never count as delivered.
+     * Cancelled, Not Delivered, "Nahi Chahiye" (not_wanted), and active Leave days never count.
      * Remaining tiffins is floored at 0 (never negative).
      */
     fun calculateMonthlyTiffinSummary(
         records: List<TiffinRecord>,
-        activeSubscription: Subscription?
+        activeSubscription: Subscription?,
+        dailyMarks: List<CustomerDailyMark> = emptyList(),
+        leaves: List<TiffinLeave> = emptyList()
     ): TiffinMonthSummary {
-        val delivered = records.count { it.status == TiffinStatus.DELIVERED }
+        val notWantedDates = dailyMarks
+            .filter { it.choice == DailyMarkChoice.NOT_WANTED }
+            .map { it.serviceDate }
+            .toSet()
+        val activeLeaves = leaves.filter { it.status == LeaveStatus.ACTIVE }
+
+        val countableRecords = records.filter { rec ->
+            rec.serviceDate !in notWantedDates &&
+                activeLeaves.none { leave ->
+                    rec.serviceDate >= leave.startDate && rec.serviceDate <= leave.endDate
+                }
+        }
+
+        val delivered = countableRecords.count { it.status == TiffinStatus.DELIVERED }
         val notDelivered = records.count { it.status == TiffinStatus.NOT_DELIVERED }
         val cancelled = records.count { it.status == TiffinStatus.CANCELLED }
 
@@ -255,5 +288,336 @@ object TiffinBusinessLogic {
         }
 
         return AuthRouteState.NeedsCustomerRegistration(profile)
+    }
+
+    fun resolveOnboardingStepForChoice(choice: OnboardingRoleChoice): OnboardingStep {
+        return when (choice) {
+            OnboardingRoleChoice.CUSTOMER -> OnboardingStep.CUSTOMER_REGISTRATION
+            OnboardingRoleChoice.SELLER -> OnboardingStep.SELLER_REGISTRATION
+            OnboardingRoleChoice.BROWSE_NEARBY -> OnboardingStep.DISCOVERY
+        }
+    }
+
+    fun resolveOnboardingBackStep(currentStep: OnboardingStep): OnboardingStep {
+        return when (currentStep) {
+            OnboardingStep.SELLER_DETAIL -> OnboardingStep.DISCOVERY
+            OnboardingStep.DISCOVERY,
+            OnboardingStep.CUSTOMER_REGISTRATION,
+            OnboardingStep.SELLER_REGISTRATION -> OnboardingStep.ROLE_CHOICE
+            OnboardingStep.SELLER_SUCCESS,
+            OnboardingStep.ROLE_CHOICE -> OnboardingStep.ROLE_CHOICE
+        }
+    }
+
+    fun validateSellerRegistration(
+        messName: String,
+        area: String,
+        city: String,
+        phone: String,
+        vegType: VegType?,
+        monthlyPriceInput: String
+    ): String? {
+        if (messName.trim().isBlank()) return "Mess name is required."
+        if (area.trim().isBlank()) return "Area / locality is required."
+        if (city.trim().isBlank()) return "City is required."
+        val digits = phone.filter { it.isDigit() }
+        if (digits.length < 10) return "Enter a valid mobile number (at least 10 digits)."
+        if (vegType == null) return "Select Veg, Non-Veg, or Both."
+        val price = monthlyPriceInput.trim().toDoubleOrNull()
+            ?: return "Enter a valid monthly price in ₹."
+        if (price <= 0.0) return "Monthly price must be greater than ₹0."
+        return null
+    }
+
+    @StringRes
+    fun validateSellerRegistrationRes(
+        messName: String,
+        area: String,
+        city: String,
+        phone: String,
+        vegType: VegType?,
+        monthlyPriceInput: String
+    ): Int? {
+        if (messName.trim().isBlank()) return R.string.err_seller_name_req
+        if (area.trim().isBlank()) return R.string.err_area_req
+        if (city.trim().isBlank()) return R.string.err_city_req
+        val digits = phone.filter { it.isDigit() }
+        if (digits.length < 10) return R.string.err_mobile_10_digits
+        if (vegType == null) return R.string.err_veg_type_req
+        val price = monthlyPriceInput.trim().toDoubleOrNull()
+            ?: return R.string.err_monthly_price_valid
+        if (price <= 0.0) return R.string.err_monthly_price_gt_zero
+        return null
+    }
+
+    fun validateCustomerRegistrationInput(
+        hasSelectedMess: Boolean,
+        registrationCode: String,
+        fullName: String,
+        phone: String,
+        area: String,
+        city: String
+    ): String? {
+        if (!hasSelectedMess && registrationCode.trim().isBlank()) {
+            return "Enter your mess registration code or browse nearby messes."
+        }
+        if (fullName.trim().isBlank()) return "Full name is required."
+        if (phone.filter { it.isDigit() }.length < 10) return "Enter a valid mobile number."
+        if (area.trim().isBlank()) return "Area / locality is required."
+        if (city.trim().isBlank()) return "City is required."
+        return null
+    }
+
+    @StringRes
+    fun validateCustomerRegistrationInputRes(
+        hasSelectedMess: Boolean,
+        registrationCode: String,
+        fullName: String,
+        phone: String,
+        area: String,
+        city: String
+    ): Int? {
+        if (!hasSelectedMess && registrationCode.trim().isBlank()) {
+            return R.string.err_enter_code_or_browse
+        }
+        if (fullName.trim().isBlank()) return R.string.err_full_name_req
+        if (phone.filter { it.isDigit() }.length < 10) return R.string.err_mobile_valid
+        if (area.trim().isBlank()) return R.string.err_area_req
+        if (city.trim().isBlank()) return R.string.err_city_req
+        return null
+    }
+
+    fun sortMessesByProximity(
+        messes: List<Mess>,
+        todayMenusByMessId: Map<String, DailyMenu>,
+        customerArea: String,
+        customerCity: String
+    ): List<DiscoverableMess> {
+        val normArea = customerArea.trim().lowercase(Locale.ENGLISH)
+        val normCity = customerCity.trim().lowercase(Locale.ENGLISH)
+
+        return messes
+            .filter { it.isActive }
+            .map { mess ->
+                val mArea = mess.area.trim().lowercase(Locale.ENGLISH)
+                val mCity = mess.city.trim().lowercase(Locale.ENGLISH)
+                val areaMatches = normArea.isNotBlank() && (
+                    mArea == normArea ||
+                        mArea.contains(normArea) ||
+                        normArea.contains(mArea) && mArea.isNotBlank() ||
+                        mess.deliveryAreas.lowercase(Locale.ENGLISH).contains(normArea)
+                    )
+                val cityMatches = normCity.isNotBlank() && mCity == normCity
+
+                val tier = when {
+                    areaMatches && (cityMatches || normCity.isBlank()) -> ProximityTier.SAME_AREA_AND_CITY
+                    cityMatches -> ProximityTier.SAME_CITY
+                    else -> ProximityTier.OTHER
+                }
+                DiscoverableMess(
+                    mess = mess,
+                    todayMenu = todayMenusByMessId[mess.id],
+                    proximityTier = tier
+                )
+            }
+            .sortedWith(
+                compareBy<DiscoverableMess> { it.proximityTier.rank }
+                    .thenByDescending { it.mess.avgRating }
+                    .thenByDescending { it.mess.ratingCount }
+                    .thenBy { it.mess.name.lowercase(Locale.ENGLISH) }
+            )
+    }
+
+    fun computeRatingSummary(starsList: List<Int>): Pair<Double, Int> {
+        val valid = starsList.filter { it in 1..5 }
+        if (valid.isEmpty()) return 0.0 to 0
+        val avg = ((valid.sum().toDouble() / valid.size) * 100.0).roundToInt() / 100.0
+        return avg to valid.size
+    }
+
+    fun buildDiscoveryJoinPrefill(mess: Mess): DiscoveryJoinPrefill {
+        return DiscoveryJoinPrefill(
+            messId = mess.id,
+            messName = mess.name,
+            area = mess.area,
+            city = mess.city
+        )
+    }
+
+    fun menuPreviewItems(menu: DailyMenu?, maxItems: Int = 3): List<String> {
+        if (menu == null) return emptyList()
+        val items = mutableListOf<String>()
+        if (!menu.lunch.isNullOrBlank()) items.add("Lunch: ${menu.lunch.trim()}")
+        if (!menu.dinner.isNullOrBlank()) items.add("Dinner: ${menu.dinner.trim()}")
+        if (!menu.breakfast.isNullOrBlank()) items.add("Breakfast: ${menu.breakfast.trim()}")
+        if (!menu.specialItems.isNullOrBlank()) items.add("Special: ${menu.specialItems.trim()}")
+        return items.take(maxItems)
+    }
+
+    // ==================== DAILY MARK, LEAVE & TOTALS LOGIC ====================
+
+    private val cutoffRegex = Regex("^([01][0-9]|2[0-3]):[0-5][0-9]$")
+
+    fun isValidCutoffTime(cutoffHHmm: String): Boolean {
+        return cutoffRegex.matches(cutoffHHmm.trim())
+    }
+
+    fun parseCutoffTime(cutoffHHmm: String?): LocalTime {
+        val cleaned = cutoffHHmm?.trim().orEmpty()
+        return if (cutoffRegex.matches(cleaned)) {
+            LocalTime.parse(cleaned)
+        } else {
+            LocalTime.of(10, 0)
+        }
+    }
+
+    fun formatCutoffDisplay(cutoffHHmm: String?): String {
+        val time = parseCutoffTime(cutoffHHmm)
+        return time.format(DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH))
+    }
+
+    fun isPastDailyCutoff(
+        cutoffHHmm: String?,
+        timezone: String?,
+        currentLocalTime: LocalTime? = null
+    ): Boolean {
+        val nowTime = currentLocalTime ?: ZonedDateTime.now(safeZoneId(timezone)).toLocalTime()
+        val cutoff = parseCutoffTime(cutoffHHmm)
+        return nowTime.isAfter(cutoff)
+    }
+
+    fun findActiveLeaveForDate(
+        dateIso: String,
+        leaves: List<TiffinLeave>,
+        customerId: String? = null
+    ): TiffinLeave? {
+        return leaves.firstOrNull { leave ->
+            leave.status == LeaveStatus.ACTIVE &&
+                (customerId == null || leave.customerId == customerId) &&
+                dateIso >= leave.startDate &&
+                dateIso <= leave.endDate
+        }
+    }
+
+    fun canCustomerCancelLeave(leave: TiffinLeave, todayIso: String): Boolean {
+        return leave.status == LeaveStatus.ACTIVE && leave.startDate > todayIso
+    }
+
+    fun computePerTiffinRate(subscription: Subscription?, mess: Mess): Double {
+        if (subscription != null) {
+            if (subscription.includedTiffins > 0 && subscription.agreedPrice > 0.0) {
+                return subscription.agreedPrice / subscription.includedTiffins.toDouble()
+            }
+            if (subscription.extraTiffinPriceSnapshot > 0.0) {
+                return subscription.extraTiffinPriceSnapshot
+            }
+        }
+        val monthly = mess.monthlyPrice
+        if (monthly != null && monthly > 0.0) {
+            return monthly / 30.0
+        }
+        return 0.0
+    }
+
+    fun buildAdminDailyCustomerSummaries(
+        customers: List<CustomerProfile>,
+        dateIso: String,
+        dailyMarks: List<CustomerDailyMark>,
+        leaves: List<TiffinLeave>,
+        monthTiffins: List<TiffinRecord>,
+        subscriptions: List<Subscription>,
+        mess: Mess
+    ): Map<String, AdminDailyCustomerSummary> {
+        val marksByCust = dailyMarks
+            .filter { it.serviceDate == dateIso }
+            .associateBy { it.customerId }
+        val monthTiffinsByCust = monthTiffins.groupBy { it.customerId }
+        val subsByCust = subscriptions.groupBy { it.customerId }
+        val marksAllByCust = dailyMarks.groupBy { it.customerId }
+        val leavesByCust = leaves.groupBy { it.customerId }
+
+        return customers.associate { cust ->
+            val custLeaves = leavesByCust[cust.id].orEmpty()
+            val activeLeave = findActiveLeaveForDate(dateIso, custLeaves, cust.id)
+            val mark = marksByCust[cust.id]
+
+            val markStatus = when {
+                activeLeave != null -> AdminCustomerMarkStatus.ON_LEAVE
+                mark?.choice == DailyMarkChoice.WANTED -> AdminCustomerMarkStatus.WANTED
+                mark?.choice == DailyMarkChoice.NOT_WANTED -> AdminCustomerMarkStatus.NOT_MARKED.let { AdminCustomerMarkStatus.NOT_WANTED }
+                else -> AdminCustomerMarkStatus.NOT_MARKED
+            }
+
+            val custSubs = subsByCust[cust.id].orEmpty()
+            val activeSub = custSubs.firstOrNull {
+                it.status == SubscriptionStatus.ACTIVE || it.status == SubscriptionStatus.EXPIRING_SOON
+            } ?: custSubs.firstOrNull()
+
+            val monthSummary = calculateMonthlyTiffinSummary(
+                records = monthTiffinsByCust[cust.id].orEmpty(),
+                activeSubscription = activeSub,
+                dailyMarks = marksAllByCust[cust.id].orEmpty(),
+                leaves = custLeaves
+            )
+            val rate = computePerTiffinRate(activeSub, mess)
+            val monthAmt = monthSummary.deliveredCount * rate
+
+            cust.id to AdminDailyCustomerSummary(
+                customerId = cust.id,
+                markStatus = markStatus,
+                activeLeave = activeLeave,
+                monthDeliveredCount = monthSummary.deliveredCount,
+                perTiffinRate = rate,
+                monthAmount = monthAmt
+            )
+        }
+    }
+
+    fun computeAdminDayTotals(
+        activeCustomers: List<CustomerProfile>,
+        summaries: Map<String, AdminDailyCustomerSummary>,
+        dailyTiffins: List<TiffinRecord>,
+        dateIso: String
+    ): AdminDayTotals {
+        var wanted = 0
+        var notWanted = 0
+        var onLeave = 0
+        var notMarked = 0
+        var deliveredCount = 0
+        var deliveredAmount = 0.0
+        var wantedAmount = 0.0
+
+        activeCustomers.forEach { cust ->
+            val sum = summaries[cust.id]
+            val rate = sum?.perTiffinRate ?: 0.0
+            when (sum?.markStatus ?: AdminCustomerMarkStatus.NOT_MARKED) {
+                AdminCustomerMarkStatus.WANTED -> {
+                    wanted++
+                    wantedAmount += rate
+                }
+                AdminCustomerMarkStatus.NOT_WANTED -> notWanted++
+                AdminCustomerMarkStatus.ON_LEAVE -> onLeave++
+                AdminCustomerMarkStatus.NOT_MARKED -> notMarked++
+            }
+            val custDeliveredToday = dailyTiffins.count {
+                it.customerId == cust.id &&
+                    it.serviceDate == dateIso &&
+                    it.status == TiffinStatus.DELIVERED &&
+                    sum?.markStatus != AdminCustomerMarkStatus.ON_LEAVE &&
+                    sum?.markStatus != AdminCustomerMarkStatus.NOT_WANTED
+            }
+            deliveredCount += custDeliveredToday
+            deliveredAmount += custDeliveredToday * rate
+        }
+
+        return AdminDayTotals(
+            wantedCount = wanted,
+            notWantedCount = notWanted,
+            onLeaveCount = onLeave,
+            notMarkedCount = notMarked,
+            deliveredTodayCount = deliveredCount,
+            deliveredTodayAmount = deliveredAmount,
+            wantedTodayAmount = wantedAmount
+        )
     }
 }

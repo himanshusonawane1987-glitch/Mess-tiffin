@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.example.domain.BillStatus
 import com.example.domain.MonthlyBill
 import com.example.domain.Payment
@@ -58,9 +59,11 @@ import com.example.ui.theme.SecondaryText
 import com.example.ui.theme.SkyPrimaryButton
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.lStr
+import com.example.ui.theme.localizedDate
+import com.example.ui.theme.localizedLabel
+import com.example.ui.theme.localizedMonthTitle
 import java.time.YearMonth
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun AdminSubscriptionsScreen(
@@ -84,6 +87,7 @@ fun AdminSubscriptionsScreen(
     var showCreatePlan by remember { mutableStateOf(false) }
     var showAssignSub by remember { mutableStateOf(false) }
     val customerNames = remember(state.customers) { state.customers.associateBy({ it.id }, { it.fullName }) }
+    val customerFallback = lStr(R.string.customer_fallback)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -93,11 +97,11 @@ fun AdminSubscriptionsScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack, modifier = Modifier.minimumInteractiveComponentSize()) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", tint = DeepBlueText)
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = lStr(R.string.action_back), tint = DeepBlueText)
                 }
                 Column {
-                    Text("Subscriptions & Plans", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
-                    Text("Create plans and manage customer subscriptions.", style = MaterialTheme.typography.bodyMedium)
+                    Text(lStr(R.string.plans_subs_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+                    Text(lStr(R.string.plans_subs_sub), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
                 }
             }
         }
@@ -115,10 +119,10 @@ fun AdminSubscriptionsScreen(
                 ) {
                     Icon(Icons.Outlined.Add, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("New Plan")
+                    Text(lStr(R.string.new_plan_btn))
                 }
                 SkyPrimaryButton(
-                    text = "Assign Plan",
+                    text = lStr(R.string.assign_plan_btn),
                     onClick = { showAssignSub = true },
                     modifier = Modifier.weight(1f).testTag("assign_subscription_button")
                 )
@@ -126,16 +130,16 @@ fun AdminSubscriptionsScreen(
         }
 
         if (state.renewalRequests.isNotEmpty()) {
-            item { Text("Pending Renewal Requests", style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
+            item { Text(lStr(R.string.pending_renewals_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
             items(state.renewalRequests, key = { it.id }) { req ->
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
-                    Text(customerNames[req.customerId] ?: "Customer", style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
+                    Text(customerNames[req.customerId] ?: customerFallback, style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
                     if (!req.note.isNullOrBlank()) Text(req.note, style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SkyPrimaryButton("Approve", onClick = { onReviewRenewalRequest(req.id, true) }, modifier = Modifier.weight(1f))
+                        SkyPrimaryButton(lStr(R.string.approve_btn), onClick = { onReviewRenewalRequest(req.id, true) }, modifier = Modifier.weight(1f))
                         OutlinedButton(onClick = { onReviewRenewalRequest(req.id, false) }, modifier = Modifier.weight(1f).height(50.dp)) {
-                            Text("Decline")
+                            Text(lStr(R.string.decline_btn))
                         }
                     }
                 }
@@ -143,13 +147,21 @@ fun AdminSubscriptionsScreen(
         }
 
         if (state.plans.isNotEmpty()) {
-            item { Text("Mess Plans (${state.plans.size})", style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
+            item { Text(lStr(R.string.mess_plans_count, state.plans.size), style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
             items(state.plans, key = { it.id }) { plan ->
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(plan.name, style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
-                            Text("${plan.includedTiffins} tiffins • ${plan.durationDays} days • Extra: ${TiffinBusinessLogic.formatCurrency(plan.extraTiffinPrice, state.mess.currency)}", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                text = lStr(
+                                    R.string.plan_line_details,
+                                    plan.includedTiffins,
+                                    plan.durationDays,
+                                    TiffinBusinessLogic.formatCurrency(plan.extraTiffinPrice, state.mess.currency)
+                                ),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                         }
                         Text(TiffinBusinessLogic.formatCurrency(plan.price, state.mess.currency), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                     }
@@ -157,7 +169,7 @@ fun AdminSubscriptionsScreen(
             }
         }
 
-        item { Text("Customer Subscriptions (${state.subscriptions.size})", style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
+        item { Text(lStr(R.string.customer_subs_count, state.subscriptions.size), style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
         items(state.subscriptions, key = { it.id }) { sub ->
             val tone = when (sub.status) {
                 SubscriptionStatus.ACTIVE -> PillTone.SUCCESS
@@ -168,31 +180,39 @@ fun AdminSubscriptionsScreen(
             GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(customerNames[sub.customerId] ?: "Customer", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                        Text(customerNames[sub.customerId] ?: customerFallback, style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                         Text("${sub.planNameSnapshot} • ${TiffinBusinessLogic.formatCurrency(sub.agreedPrice, state.mess.currency)}", style = MaterialTheme.typography.bodyMedium)
-                        Text("${sub.startDate} to ${sub.endDate} • ${sub.includedTiffins} tiffins", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            text = lStr(
+                                R.string.sub_dates_tiffins,
+                                localizedDate(sub.startDate),
+                                localizedDate(sub.endDate),
+                                sub.includedTiffins
+                            ),
+                            style = MaterialTheme.typography.labelSmall
+                        )
                     }
-                    StatusPill(sub.status.name.lowercase().replace('_', ' '), tone)
+                    StatusPill(sub.status.localizedLabel(), tone)
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (sub.status == SubscriptionStatus.PAUSED) {
                         OutlinedButton(onClick = { onUpdateSubscriptionStatus(sub.id, SubscriptionStatus.ACTIVE) }, modifier = Modifier.weight(1f)) {
-                            Text("Resume")
+                            Text(lStr(R.string.resume_btn))
                         }
                     } else if (sub.status == SubscriptionStatus.ACTIVE) {
                         OutlinedButton(onClick = { onUpdateSubscriptionStatus(sub.id, SubscriptionStatus.PAUSED) }, modifier = Modifier.weight(1f)) {
-                            Text("Pause")
+                            Text(lStr(R.string.pause_btn))
                         }
                     }
                     if (sub.status != SubscriptionStatus.EXPIRED) {
                         OutlinedButton(onClick = { onUpdateSubscriptionStatus(sub.id, SubscriptionStatus.EXPIRED) }, modifier = Modifier.weight(1f)) {
-                            Text("Expire")
+                            Text(lStr(R.string.expire_btn))
                         }
                     }
                     if (sub.status != SubscriptionStatus.CANCELLED) {
                         OutlinedButton(onClick = { onUpdateSubscriptionStatus(sub.id, SubscriptionStatus.CANCELLED) }, modifier = Modifier.weight(1f)) {
-                            Text("Cancel")
+                            Text(lStr(R.string.action_cancel))
                         }
                     }
                 }
@@ -206,39 +226,41 @@ fun AdminSubscriptionsScreen(
         var price by remember { mutableStateOf("3000") }
         var tiffins by remember { mutableStateOf("60") }
         var extraPrice by remember { mutableStateOf("60") }
+        val defaultPlanName = lStr(R.string.custom_monthly_plan_default)
         AlertDialog(
             onDismissRequest = { showCreatePlan = false },
-            title = { Text("Create Subscription Plan") },
+            title = { Text(lStr(R.string.create_plan_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Plan Name (e.g. Monthly Lunch+Dinner)") })
-                    OutlinedTextField(value = days, onValueChange = { days = it }, label = { Text("Duration (Days)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Price (${state.mess.currency})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    OutlinedTextField(value = tiffins, onValueChange = { tiffins = it }, label = { Text("Included Tiffins") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    OutlinedTextField(value = extraPrice, onValueChange = { extraPrice = it }, label = { Text("Extra Tiffin Price") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(lStr(R.string.plan_name_hint)) })
+                    OutlinedTextField(value = days, onValueChange = { days = it }, label = { Text(lStr(R.string.duration_days_label)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text(lStr(R.string.price_currency_label, state.mess.currency)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    OutlinedTextField(value = tiffins, onValueChange = { tiffins = it }, label = { Text(lStr(R.string.included_tiffins_label)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = extraPrice, onValueChange = { extraPrice = it }, label = { Text(lStr(R.string.extra_tiffin_price_label)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     showCreatePlan = false
                     onCreatePlan(
-                        name.ifBlank { "Monthly Plan" },
+                        name.ifBlank { defaultPlanName },
                         days.toIntOrNull() ?: 30,
                         price.toDoubleOrNull() ?: 0.0,
                         tiffins.toIntOrNull() ?: 30,
                         state.mess.mealSlots,
                         extraPrice.toDoubleOrNull() ?: 0.0
                     )
-                }) { Text("Create") }
+                }) { Text(lStr(R.string.create_btn)) }
             },
-            dismissButton = { TextButton(onClick = { showCreatePlan = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showCreatePlan = false }) { Text(lStr(R.string.action_cancel)) } }
         )
     }
 
     if (showAssignSub) {
+        val defaultCustomName = lStr(R.string.custom_monthly_plan_default)
         var selectedCustId by remember { mutableStateOf(state.activeCustomers.firstOrNull()?.id) }
         var selectedPlan by remember { mutableStateOf(state.plans.firstOrNull()) }
-        var customName by remember { mutableStateOf("Custom Monthly Plan") }
+        var customName by remember(defaultCustomName) { mutableStateOf(defaultCustomName) }
         var price by remember(selectedPlan) { mutableStateOf((selectedPlan?.price ?: 3000.0).toString()) }
         var tiffins by remember(selectedPlan) { mutableStateOf((selectedPlan?.includedTiffins ?: 30).toString()) }
         val today = TiffinBusinessLogic.messToday(state.mess.timezone)
@@ -249,10 +271,10 @@ fun AdminSubscriptionsScreen(
 
         AlertDialog(
             onDismissRequest = { showAssignSub = false },
-            title = { Text("Assign Subscription") },
+            title = { Text(lStr(R.string.assign_sub_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Customer", style = MaterialTheme.typography.labelMedium)
+                    Text(customerFallback, style = MaterialTheme.typography.labelMedium)
                     state.activeCustomers.take(5).forEach { c ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selectedCustId == c.id, onClick = { selectedCustId = c.id })
@@ -260,7 +282,7 @@ fun AdminSubscriptionsScreen(
                         }
                     }
                     if (state.plans.isNotEmpty()) {
-                        Text("Plan", style = MaterialTheme.typography.labelMedium)
+                        Text(lStr(R.string.plan_label), style = MaterialTheme.typography.labelMedium)
                         state.plans.take(4).forEach { p ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 RadioButton(selected = selectedPlan?.id == p.id, onClick = { selectedPlan = p })
@@ -268,12 +290,12 @@ fun AdminSubscriptionsScreen(
                             }
                         }
                     } else {
-                        OutlinedTextField(value = customName, onValueChange = { customName = it }, label = { Text("Custom Plan Name") })
+                        OutlinedTextField(value = customName, onValueChange = { customName = it }, label = { Text(lStr(R.string.custom_plan_name_label)) })
                     }
-                    OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Agreed Price") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    OutlinedTextField(value = tiffins, onValueChange = { tiffins = it }, label = { Text("Total Allowance Tiffins") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    OutlinedTextField(value = startIso, onValueChange = { startIso = it }, label = { Text("Start Date (YYYY-MM-DD)") })
-                    OutlinedTextField(value = endIso, onValueChange = { endIso = it }, label = { Text("End Date (YYYY-MM-DD)") })
+                    OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text(lStr(R.string.agreed_price_label)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    OutlinedTextField(value = tiffins, onValueChange = { tiffins = it }, label = { Text(lStr(R.string.total_allowance_tiffins)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = startIso, onValueChange = { startIso = it }, label = { Text(lStr(R.string.field_start_date)) })
+                    OutlinedTextField(value = endIso, onValueChange = { endIso = it }, label = { Text(lStr(R.string.field_end_date)) })
                 }
             },
             confirmButton = {
@@ -294,9 +316,9 @@ fun AdminSubscriptionsScreen(
                             price.toDoubleOrNull() ?: 0.0
                         )
                     }
-                ) { Text("Assign") }
+                ) { Text(lStr(R.string.assign_btn)) }
             },
-            dismissButton = { TextButton(onClick = { showAssignSub = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showAssignSub = false }) { Text(lStr(R.string.action_cancel)) } }
         )
     }
 }
@@ -309,25 +331,34 @@ fun AdminBillingScreen(
     onRecordPayment: (billId: String, amount: Double, method: PaymentMethod, refNote: String?) -> Unit,
     onReversePayment: (paymentId: String, reason: String) -> Unit
 ) {
-    var statusFilter by remember { mutableStateOf("All") }
+    var statusFilter by remember { mutableStateOf("ALL") }
     var showGenerateDialog by remember { mutableStateOf(false) }
     var paymentTargetBill by remember { mutableStateOf<MonthlyBill?>(null) }
     var reverseTargetPayment by remember { mutableStateOf<Payment?>(null) }
 
     val customerNames = remember(state.customers) { state.customers.associateBy({ it.id }, { it.fullName }) }
-    val monthTitle = state.selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH))
+    val customerFallback = lStr(R.string.customer_fallback)
+    val monthTitle = localizedMonthTitle(state.selectedMonth)
     val monthIso = TiffinBusinessLogic.monthStartIso(state.selectedMonth)
 
     val filteredBills = remember(state.monthBills, statusFilter) {
         state.monthBills.filter { b ->
             when (statusFilter) {
-                "Pending" -> b.status == BillStatus.PENDING || b.status == BillStatus.PARTIALLY_PAID
-                "Overdue" -> b.status == BillStatus.OVERDUE
-                "Paid" -> b.status == BillStatus.PAID
+                "PENDING" -> b.status == BillStatus.PENDING || b.status == BillStatus.PARTIALLY_PAID
+                "OVERDUE" -> b.status == BillStatus.OVERDUE
+                "PAID" -> b.status == BillStatus.PAID
                 else -> true
             }
         }
     }
+
+    val filterOptions = listOf(
+        "ALL" to lStr(R.string.filter_all),
+        "PENDING" to lStr(R.string.bill_pending),
+        "OVERDUE" to lStr(R.string.bill_overdue),
+        "PAID" to lStr(R.string.bill_paid)
+    )
+    val activeFilterLabel = filterOptions.firstOrNull { it.first == statusFilter }?.second ?: lStr(R.string.filter_all)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -335,8 +366,8 @@ fun AdminBillingScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Billing & Payments", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
-            Text("Generate monthly bills and log verified offline/UPI payments.", style = MaterialTheme.typography.bodyMedium)
+            Text(lStr(R.string.bills_payments_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.admin_billing_sub), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
         }
 
         if (!state.errorMessage.isNullOrBlank()) item { ErrorNoticeCard(state.errorMessage) }
@@ -348,16 +379,16 @@ fun AdminBillingScreen(
             GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { onSelectMonth(state.selectedMonth.minusMonths(1)) }) {
-                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = "Previous month")
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = lStr(R.string.action_prev_month))
                     }
                     Text(monthTitle, style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                     IconButton(onClick = { onSelectMonth(state.selectedMonth.plusMonths(1)) }) {
-                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Next month")
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = lStr(R.string.action_next_month))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 SkyPrimaryButton(
-                    text = "Generate / Refresh Customer Bill",
+                    text = lStr(R.string.make_monthly_bill_btn),
                     icon = Icons.Outlined.ReceiptLong,
                     onClick = { showGenerateDialog = true },
                     loading = state.isActionBusy,
@@ -368,8 +399,8 @@ fun AdminBillingScreen(
 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("All", "Pending", "Overdue", "Paid").forEach { tab ->
-                    FilterChip(selected = statusFilter == tab, onClick = { statusFilter = tab }, label = { Text(tab) })
+                filterOptions.forEach { (key, label) ->
+                    FilterChip(selected = statusFilter == key, onClick = { statusFilter = key }, label = { Text(label) })
                 }
             }
         }
@@ -377,7 +408,7 @@ fun AdminBillingScreen(
         if (filteredBills.isEmpty()) {
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Text("No bills for $monthTitle under '$statusFilter'.", style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
+                    Text(lStr(R.string.no_bills_under_filter, monthTitle, activeFilterLabel), style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
                 }
             }
         } else {
@@ -391,17 +422,17 @@ fun AdminBillingScreen(
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(customerNames[bill.customerId] ?: "Customer", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
-                            Text("Due: ${TiffinBusinessLogic.formatDateDisplay(bill.dueDate)}", style = MaterialTheme.typography.labelMedium)
+                            Text(customerNames[bill.customerId] ?: customerFallback, style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                            Text(lStr(R.string.due_colon, localizedDate(bill.dueDate)), style = MaterialTheme.typography.labelMedium)
                         }
-                        StatusPill(bill.status.name.lowercase().replace('_', ' '), tone)
+                        StatusPill(bill.status.localizedLabel(), tone)
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Total: ${TiffinBusinessLogic.formatCurrency(bill.totalAmount, state.mess.currency)}")
-                        Text("Paid: ${TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency)}", color = SuccessGreen)
+                        Text(lStr(R.string.total_colon, TiffinBusinessLogic.formatCurrency(bill.totalAmount, state.mess.currency)))
+                        Text(lStr(R.string.paid_colon, TiffinBusinessLogic.formatCurrency(bill.amountPaid, state.mess.currency)), color = SuccessGreen)
                         Text(
-                            "Due: ${TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency)}",
+                            text = lStr(R.string.due_colon, TiffinBusinessLogic.formatCurrency(bill.balanceDue, state.mess.currency)),
                             color = if (bill.balanceDue > 0) ErrorCoral else SuccessGreen,
                             fontWeight = FontWeight.Bold
                         )
@@ -409,7 +440,7 @@ fun AdminBillingScreen(
                     if (bill.balanceDue > 0) {
                         Spacer(Modifier.height(10.dp))
                         SkyPrimaryButton(
-                            text = "Record Payment",
+                            text = lStr(R.string.save_payment_btn),
                             icon = Icons.Outlined.Payments,
                             onClick = { paymentTargetBill = bill },
                             modifier = Modifier.fillMaxWidth()
@@ -420,22 +451,22 @@ fun AdminBillingScreen(
         }
 
         if (state.payments.isNotEmpty()) {
-            item { Text("Payment Ledger (Audit Preserved)", style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
+            item { Text(lStr(R.string.payment_history_title), style = MaterialTheme.typography.titleLarge, color = DeepBlueText) }
             items(state.payments, key = { it.id }) { pay ->
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "${customerNames[pay.customerId] ?: "Customer"} • ${TiffinBusinessLogic.formatCurrency(pay.amount, state.mess.currency)}",
+                                text = "${customerNames[pay.customerId] ?: customerFallback} • ${TiffinBusinessLogic.formatCurrency(pay.amount, state.mess.currency)}",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = if (pay.status == PaymentStatus.CONFIRMED) DeepBlueText else SecondaryText
                             )
-                            Text("${pay.paymentMethod.label} • ${pay.referenceNote ?: "No ref"}", style = MaterialTheme.typography.bodyMedium)
+                            Text("${pay.paymentMethod.localizedLabel()} • ${pay.referenceNote ?: lStr(R.string.no_note)}", style = MaterialTheme.typography.bodyMedium)
                         }
                         if (pay.status == PaymentStatus.CONFIRMED) {
-                            OutlinedButton(onClick = { reverseTargetPayment = pay }) { Text("Reverse") }
+                            OutlinedButton(onClick = { reverseTargetPayment = pay }) { Text(lStr(R.string.undo_btn)) }
                         } else {
-                            StatusPill("Reversed", PillTone.NEUTRAL)
+                            StatusPill(lStr(R.string.tiffin_cancelled), PillTone.NEUTRAL)
                         }
                     }
                 }
@@ -449,7 +480,7 @@ fun AdminBillingScreen(
         var prevBal by remember { mutableStateOf("0") }
         AlertDialog(
             onDismissRequest = { showGenerateDialog = false },
-            title = { Text("Generate Bill ($monthTitle)") },
+            title = { Text(lStr(R.string.generate_bill_title, monthTitle)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.activeCustomers.take(6).forEach { c ->
@@ -458,8 +489,8 @@ fun AdminBillingScreen(
                             Text(c.fullName)
                         }
                     }
-                    OutlinedTextField(value = discount, onValueChange = { discount = it }, label = { Text("Discount (${state.mess.currency})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    OutlinedTextField(value = prevBal, onValueChange = { prevBal = it }, label = { Text("Previous Unpaid Balance") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    OutlinedTextField(value = discount, onValueChange = { discount = it }, label = { Text(lStr(R.string.discount_label, state.mess.currency)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    OutlinedTextField(value = prevBal, onValueChange = { prevBal = it }, label = { Text(lStr(R.string.prev_unpaid_balance)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 }
             },
             confirmButton = {
@@ -470,9 +501,9 @@ fun AdminBillingScreen(
                         showGenerateDialog = false
                         onGenerateBill(cid, monthIso, discount.toDoubleOrNull() ?: 0.0, prevBal.toDoubleOrNull() ?: 0.0)
                     }
-                ) { Text("Generate") }
+                ) { Text(lStr(R.string.generate_btn)) }
             },
-            dismissButton = { TextButton(onClick = { showGenerateDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showGenerateDialog = false }) { Text(lStr(R.string.action_cancel)) } }
         )
     }
 
@@ -483,17 +514,17 @@ fun AdminBillingScreen(
         var refNote by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { paymentTargetBill = null },
-            title = { Text("Record External Payment") },
+            title = { Text(lStr(R.string.save_payment_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Records payments received outside the app (Cash, UPI, Bank Transfer).", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Amount (${state.mess.currency})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    Text(lStr(R.string.save_payment_hint), style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text(lStr(R.string.amount_label, state.mess.currency)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         PaymentMethod.entries.forEach { m ->
-                            FilterChip(selected = method == m, onClick = { method = m }, label = { Text(m.label) })
+                            FilterChip(selected = method == m, onClick = { method = m }, label = { Text(m.localizedLabel()) })
                         }
                     }
-                    OutlinedTextField(value = refNote, onValueChange = { refNote = it }, label = { Text("Reference / Transaction Note") })
+                    OutlinedTextField(value = refNote, onValueChange = { refNote = it }, label = { Text(lStr(R.string.notes_opt_label)) })
                 }
             },
             confirmButton = {
@@ -501,9 +532,9 @@ fun AdminBillingScreen(
                     val amt = amount.toDoubleOrNull() ?: 0.0
                     paymentTargetBill = null
                     onRecordPayment(bill.id, amt, method, refNote)
-                }) { Text("Save Payment") }
+                }) { Text(lStr(R.string.save_payment_btn)) }
             },
-            dismissButton = { TextButton(onClick = { paymentTargetBill = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { paymentTargetBill = null }) { Text(lStr(R.string.action_cancel)) } }
         )
     }
 
@@ -512,20 +543,20 @@ fun AdminBillingScreen(
         var reason by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { reverseTargetPayment = null },
-            title = { Text("Reverse Payment") },
+            title = { Text(lStr(R.string.undo_payment_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Payment records are never deleted. Reversing preserves audit history and updates the bill balance.", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedTextField(value = reason, onValueChange = { reason = it }, label = { Text("Reason for reversal") })
+                    Text(lStr(R.string.undo_payment_desc), style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(value = reason, onValueChange = { reason = it }, label = { Text(lStr(R.string.reason_opt)) })
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     reverseTargetPayment = null
                     onReversePayment(revPay.id, reason)
-                }) { Text("Confirm Reversal") }
+                }) { Text(lStr(R.string.confirm_undo_btn)) }
             },
-            dismissButton = { TextButton(onClick = { reverseTargetPayment = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { reverseTargetPayment = null }) { Text(lStr(R.string.action_cancel)) } }
         )
     }
 }

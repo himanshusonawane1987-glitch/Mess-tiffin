@@ -49,9 +49,13 @@ import com.example.ui.theme.SecondaryText
 import com.example.ui.theme.SkyPrimary
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.lStr
+import com.example.ui.theme.localizedDate
+import com.example.ui.theme.localizedLabel
+import com.example.ui.theme.localizedMealSlot
+import com.example.ui.theme.localizedMonthTitle
+import com.example.ui.theme.localizedTime
 import java.time.YearMonth
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun CustomerHistoryScreen(
@@ -59,7 +63,7 @@ fun CustomerHistoryScreen(
     onSelectMonth: (YearMonth) -> Unit
 ) {
     val currentMessMonth = TiffinBusinessLogic.messYearMonth(state.mess.timezone)
-    val monthTitle = state.selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH))
+    val monthTitle = localizedMonthTitle(state.selectedMonth)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -67,11 +71,10 @@ fun CustomerHistoryScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Tiffin History", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
-            Text("Only delivered tiffins count toward monthly usage.", style = MaterialTheme.typography.bodyMedium)
+            Text(lStr(R.string.history_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.history_sub), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
         }
 
-        // Month selector
         item {
             GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
                 Row(
@@ -83,7 +86,7 @@ fun CustomerHistoryScreen(
                         onClick = { onSelectMonth(state.selectedMonth.minusMonths(1)) },
                         modifier = Modifier.minimumInteractiveComponentSize().testTag("history_prev_month")
                     ) {
-                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = "Previous month", tint = DeepBlueText)
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = lStr(R.string.action_prev_month), tint = DeepBlueText)
                     }
                     Text(
                         text = monthTitle,
@@ -99,7 +102,7 @@ fun CustomerHistoryScreen(
                         enabled = state.selectedMonth.isBefore(currentMessMonth),
                         modifier = Modifier.minimumInteractiveComponentSize().testTag("history_next_month")
                     ) {
-                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Next month")
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = lStr(R.string.action_next_month))
                     }
                 }
             }
@@ -111,18 +114,18 @@ fun CustomerHistoryScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 MetricValueCard(
-                    title = "Delivered",
+                    title = lStr(R.string.metric_delivered),
                     value = state.monthSummary.deliveredCount.toString(),
                     accentColor = SuccessGreen,
                     modifier = Modifier.weight(1f)
                 )
                 MetricValueCard(
-                    title = "Not Delivered",
+                    title = lStr(R.string.metric_not_delivered),
                     value = state.monthSummary.notDeliveredCount.toString(),
                     modifier = Modifier.weight(1f)
                 )
                 MetricValueCard(
-                    title = "Cancelled",
+                    title = lStr(R.string.metric_cancelled),
                     value = state.monthSummary.cancelledCount.toString(),
                     modifier = Modifier.weight(1f)
                 )
@@ -133,25 +136,31 @@ fun CustomerHistoryScreen(
             item {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "No tiffin records found for $monthTitle.",
+                        text = lStr(R.string.history_empty_month, monthTitle),
                         style = MaterialTheme.typography.titleMedium,
                         color = DeepBlueText
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "Daily delivery records marked by your mess admin will appear here.",
+                        text = lStr(R.string.history_empty_sub),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
         } else {
             items(state.monthTiffins, key = { it.id }) { rec ->
-                val (label, tone, icon) = when (rec.status) {
-                    TiffinStatus.DELIVERED -> Triple("Delivered", PillTone.SUCCESS, Icons.Outlined.CheckCircle)
-                    TiffinStatus.NOT_DELIVERED -> Triple("Not Delivered", PillTone.ERROR, Icons.Outlined.Close)
-                    TiffinStatus.CANCELLED -> Triple("Cancelled", PillTone.NEUTRAL, Icons.Outlined.Close)
+                val tone = when (rec.status) {
+                    TiffinStatus.DELIVERED -> PillTone.SUCCESS
+                    TiffinStatus.NOT_DELIVERED -> PillTone.ERROR
+                    TiffinStatus.CANCELLED -> PillTone.NEUTRAL
                 }
-                val timeStr = TiffinBusinessLogic.formatTimeInMessZone(rec.deliveredAt, state.mess.timezone)
+                val icon = when (rec.status) {
+                    TiffinStatus.DELIVERED -> Icons.Outlined.CheckCircle
+                    TiffinStatus.NOT_DELIVERED, TiffinStatus.CANCELLED -> Icons.Outlined.Close
+                }
+                val label = rec.status.localizedLabel()
+                val timeStr = localizedTime(rec.deliveredAt, state.mess.timezone)
+                val slotText = localizedMealSlot(rec.mealSlot)
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -160,15 +169,12 @@ fun CustomerHistoryScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = TiffinBusinessLogic.formatDateDisplay(rec.serviceDate),
+                                text = localizedDate(rec.serviceDate),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = DeepBlueText
                             )
                             Text(
-                                text = buildString {
-                                    append(rec.mealSlot.replaceFirstChar { it.uppercase() })
-                                    if (!timeStr.isNullOrBlank()) append(" • $timeStr")
-                                },
+                                text = if (!timeStr.isNullOrBlank()) "$slotText • $timeStr" else slotText,
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             if (!rec.note.isNullOrBlank()) {
@@ -199,8 +205,8 @@ fun CustomerMenuScreen(state: CustomerUiState) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Today's Menu", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
-            Text("Published by ${state.mess.name}", style = MaterialTheme.typography.bodyMedium)
+            Text(lStr(R.string.todays_menu_title), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+            Text(lStr(R.string.menu_from_mess, state.mess.name), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
         }
 
         item {
@@ -208,7 +214,7 @@ fun CustomerMenuScreen(state: CustomerUiState) {
                 GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = true) {
                     Image(
                         painter = painterResource(id = R.drawable.img_empty_menu),
-                        contentDescription = "No menu published yet",
+                        contentDescription = lStr(R.string.menu_empty_cd),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(160.dp)
@@ -217,13 +223,13 @@ fun CustomerMenuScreen(state: CustomerUiState) {
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        text = "Today's menu isn't published yet",
+                        text = lStr(R.string.menu_not_posted),
                         style = MaterialTheme.typography.titleLarge,
                         color = DeepBlueText
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "It will appear here automatically as soon as the mess owner publishes it.",
+                        text = lStr(R.string.menu_empty_desc),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -235,7 +241,7 @@ fun CustomerMenuScreen(state: CustomerUiState) {
         if (pastMenus.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(4.dp))
-                Text("Recent Menus", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                Text(lStr(R.string.recent_menus), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
             }
             items(pastMenus, key = { it.id }) { menu ->
                 MenuDetailCard(menu = menu, timezone = state.mess.timezone, isToday = false)
@@ -246,7 +252,7 @@ fun CustomerMenuScreen(state: CustomerUiState) {
 
 @Composable
 private fun MenuDetailCard(menu: DailyMenu, timezone: String, isToday: Boolean) {
-    val updatedAt = TiffinBusinessLogic.formatTimeInMessZone(menu.publishedAt ?: menu.updatedAt, timezone)
+    val updatedAt = localizedTime(menu.publishedAt ?: menu.updatedAt, timezone)
     GlassCard(modifier = Modifier.fillMaxWidth(), strongSurface = isToday) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -254,34 +260,34 @@ private fun MenuDetailCard(menu: DailyMenu, timezone: String, isToday: Boolean) 
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = TiffinBusinessLogic.formatDateDisplay(menu.menuDate),
+                text = localizedDate(menu.menuDate),
                 style = MaterialTheme.typography.titleLarge,
                 color = DeepBlueText
             )
             if (isToday) {
-                StatusPill(label = "Today", tone = PillTone.INFO)
+                StatusPill(label = lStr(R.string.pill_today), tone = PillTone.INFO)
             }
         }
         Spacer(Modifier.height(12.dp))
         if (!menu.breakfast.isNullOrBlank()) {
-            MenuMealRow(Icons.Outlined.BakeryDining, "Breakfast", menu.breakfast)
+            MenuMealRow(Icons.Outlined.BakeryDining, lStr(R.string.meal_breakfast), menu.breakfast)
             Spacer(Modifier.height(8.dp))
         }
         if (!menu.lunch.isNullOrBlank()) {
-            MenuMealRow(Icons.Outlined.LunchDining, "Lunch", menu.lunch)
+            MenuMealRow(Icons.Outlined.LunchDining, lStr(R.string.meal_lunch), menu.lunch)
             Spacer(Modifier.height(8.dp))
         }
         if (!menu.dinner.isNullOrBlank()) {
-            MenuMealRow(Icons.Outlined.DinnerDining, "Dinner", menu.dinner)
+            MenuMealRow(Icons.Outlined.DinnerDining, lStr(R.string.meal_dinner), menu.dinner)
             Spacer(Modifier.height(8.dp))
         }
         if (!menu.specialItems.isNullOrBlank()) {
-            MenuMealRow(Icons.Outlined.StarOutline, "Special Item", menu.specialItems)
+            MenuMealRow(Icons.Outlined.StarOutline, lStr(R.string.special_item_label), menu.specialItems)
             Spacer(Modifier.height(8.dp))
         }
         if (!menu.notes.isNullOrBlank()) {
             Text(
-                text = "Note: ${menu.notes}",
+                text = lStr(R.string.note_prefix, menu.notes),
                 style = MaterialTheme.typography.bodyMedium,
                 color = SecondaryText
             )
@@ -289,7 +295,7 @@ private fun MenuDetailCard(menu: DailyMenu, timezone: String, isToday: Boolean) 
         if (!updatedAt.isNullOrBlank()) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "Updated at $updatedAt",
+                text = lStr(R.string.updated_at_time, updatedAt),
                 style = MaterialTheme.typography.labelSmall,
                 color = SecondaryText
             )

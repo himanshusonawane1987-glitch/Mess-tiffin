@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.example.domain.TiffinBusinessLogic
 import com.example.ui.auth.ErrorNoticeCard
 import com.example.ui.theme.DeepBlueText
@@ -50,6 +51,8 @@ import com.example.ui.theme.SkyPrimary
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.WarningAmber
+import com.example.ui.theme.lStr
+import com.example.ui.theme.localizedDate
 
 @Composable
 fun AdminDashboardScreen(
@@ -63,17 +66,14 @@ fun AdminDashboardScreen(
     onOpenReports: () -> Unit,
     onOpenProfile: () -> Unit
 ) {
-    val todayDisplay = TiffinBusinessLogic.formatDateDisplay(
-        TiffinBusinessLogic.messToday(state.mess.timezone).toString()
-    )
-    val adminFirstName = state.profile.fullName.substringBefore(" ").ifBlank { "Owner" }
+    val todayDisplay = localizedDate(TiffinBusinessLogic.messToday(state.mess.timezone).toString())
+    val adminFirstName = state.profile.fullName.substringBefore(" ").ifBlank { lStr(R.string.owner_fallback) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 104.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Header
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -82,7 +82,7 @@ fun AdminDashboardScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Welcome, $adminFirstName",
+                        text = lStr(R.string.admin_welcome, adminFirstName),
                         style = MaterialTheme.typography.headlineMedium,
                         color = DeepBlueText,
                         maxLines = 1,
@@ -95,19 +95,26 @@ fun AdminDashboardScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Text(
+                        text = lStr(R.string.admin_hint),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = SkyPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 Row {
                     IconButton(
                         onClick = onRefresh,
                         modifier = Modifier.minimumInteractiveComponentSize().testTag("admin_refresh_button")
                     ) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = "Refresh admin dashboard", tint = DeepBlueText)
+                        Icon(Icons.Outlined.Refresh, contentDescription = lStr(R.string.refresh_dashboard_cd), tint = DeepBlueText)
                     }
                     IconButton(
                         onClick = onOpenProfile,
                         modifier = Modifier.minimumInteractiveComponentSize()
                     ) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Mess Settings", tint = DeepBlueText)
+                        Icon(Icons.Outlined.Settings, contentDescription = lStr(R.string.mess_settings_cd), tint = DeepBlueText)
                     }
                 }
             }
@@ -143,22 +150,21 @@ fun AdminDashboardScreen(
                             Spacer(Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    "${state.pendingRequests.size} Pending Customer Request(s)",
+                                    text = lStr(R.string.join_requests_count, state.pendingRequests.size),
                                     style = MaterialTheme.typography.titleMedium,
                                     color = DeepBlueText
                                 )
-                                Text("Tap to review and approve", style = MaterialTheme.typography.bodyMedium)
+                                Text(lStr(R.string.tap_approve_reject), style = MaterialTheme.typography.bodyMedium)
                             }
                         }
-                        StatusPill(label = "Review", tone = PillTone.WARNING)
+                        StatusPill(label = lStr(R.string.pill_review), tone = PillTone.WARNING)
                     }
                 }
             }
         }
 
-        // Today's Overview
         item {
-            Text("Today's Overview", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+            Text(lStr(R.string.todays_overview), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
         }
 
         item {
@@ -169,15 +175,15 @@ fun AdminDashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Delivery Completion", style = MaterialTheme.typography.labelMedium)
+                        Text(lStr(R.string.todays_progress), style = MaterialTheme.typography.labelMedium)
                         Text(
-                            "${state.completionRatePercent}%",
+                            text = "${state.completionRatePercent}%",
                             style = MaterialTheme.typography.displaySmall,
                             color = DeepBlueText
                         )
                     }
                     StatusPill(
-                        label = "${state.deliveredTodayCount} / ${state.expectedTiffinsToday} tiffins",
+                        label = lStr(R.string.tiffins_progress_pill, state.deliveredTodayCount, state.expectedTiffinsToday),
                         tone = PillTone.INFO
                     )
                 }
@@ -194,13 +200,13 @@ fun AdminDashboardScreen(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricValueCard(
-                    title = "Active Customers",
+                    title = lStr(R.string.metric_active_customers),
                     value = state.activeCustomers.size.toString(),
                     icon = Icons.Outlined.Groups,
                     modifier = Modifier.weight(1f)
                 )
                 MetricValueCard(
-                    title = "Delivered Today",
+                    title = lStr(R.string.metric_delivered_today),
                     value = state.deliveredTodayCount.toString(),
                     accentColor = SuccessGreen,
                     icon = Icons.Outlined.CheckCircle,
@@ -212,13 +218,13 @@ fun AdminDashboardScreen(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricValueCard(
-                    title = "Pending Today",
+                    title = lStr(R.string.metric_pending_today),
                     value = state.pendingTodayCount.toString(),
                     accentColor = WarningAmber,
                     modifier = Modifier.weight(1f)
                 )
                 MetricValueCard(
-                    title = "Not Delivered",
+                    title = lStr(R.string.metric_not_delivered),
                     value = state.notDeliveredTodayCount.toString(),
                     accentColor = ErrorCoral,
                     modifier = Modifier.weight(1f)
@@ -226,20 +232,19 @@ fun AdminDashboardScreen(
             }
         }
 
-        // Monthly Financial Overview
         item {
-            Text("Monthly Financial Overview", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+            Text(lStr(R.string.this_months_money), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
         }
 
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricValueCard(
-                    title = "Expected Billing",
+                    title = lStr(R.string.metric_total_billed),
                     value = TiffinBusinessLogic.formatCurrency(state.monthlyExpectedRevenue, state.mess.currency),
                     modifier = Modifier.weight(1f)
                 )
                 MetricValueCard(
-                    title = "Collected",
+                    title = lStr(R.string.metric_paid_received),
                     value = TiffinBusinessLogic.formatCurrency(state.monthlyCollected, state.mess.currency),
                     accentColor = SuccessGreen,
                     modifier = Modifier.weight(1f)
@@ -250,13 +255,13 @@ fun AdminDashboardScreen(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricValueCard(
-                    title = "Pending Balance",
+                    title = lStr(R.string.metric_yet_to_collect),
                     value = TiffinBusinessLogic.formatCurrency(state.monthlyPendingBalance, state.mess.currency),
                     accentColor = WarningAmber,
                     modifier = Modifier.weight(1f)
                 )
                 MetricValueCard(
-                    title = "Overdue",
+                    title = lStr(R.string.bill_overdue),
                     value = TiffinBusinessLogic.formatCurrency(state.monthlyOverdueBalance, state.mess.currency),
                     accentColor = ErrorCoral,
                     modifier = Modifier.weight(1f)
@@ -264,24 +269,23 @@ fun AdminDashboardScreen(
             }
         }
 
-        // Quick Actions
         item {
-            Text("Quick Actions", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+            Text(lStr(R.string.quick_actions), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
         }
 
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AdminQuickTile("Today's Tiffins", Icons.Outlined.LunchDining, onOpenTiffins, Modifier.weight(1f), "quick_action_tiffins")
-                    AdminQuickTile("Daily Menu", Icons.Outlined.RestaurantMenu, onOpenMenu, Modifier.weight(1f), "quick_action_menu")
+                    AdminQuickTile(lStr(R.string.qa_todays_tiffins), Icons.Outlined.LunchDining, onOpenTiffins, Modifier.weight(1f), "quick_action_tiffins")
+                    AdminQuickTile(lStr(R.string.qa_daily_menu), Icons.Outlined.RestaurantMenu, onOpenMenu, Modifier.weight(1f), "quick_action_menu")
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AdminQuickTile("Customers", Icons.Outlined.PersonAdd, onOpenCustomers, Modifier.weight(1f), "quick_action_customers")
-                    AdminQuickTile("Record Payment", Icons.Outlined.Payments, onOpenBilling, Modifier.weight(1f), "quick_action_billing")
+                    AdminQuickTile(lStr(R.string.qa_customers), Icons.Outlined.PersonAdd, onOpenCustomers, Modifier.weight(1f), "quick_action_customers")
+                    AdminQuickTile(lStr(R.string.qa_bills_payments), Icons.Outlined.Payments, onOpenBilling, Modifier.weight(1f), "quick_action_billing")
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AdminQuickTile("Subscriptions", Icons.Outlined.CardMembership, onOpenSubscriptions, Modifier.weight(1f), "quick_action_subscriptions")
-                    AdminQuickTile("Reports", Icons.Outlined.Assessment, onOpenReports, Modifier.weight(1f), "quick_action_reports")
+                    AdminQuickTile(lStr(R.string.qa_plans), Icons.Outlined.CardMembership, onOpenSubscriptions, Modifier.weight(1f), "quick_action_subscriptions")
+                    AdminQuickTile(lStr(R.string.qa_reports), Icons.Outlined.Assessment, onOpenReports, Modifier.weight(1f), "quick_action_reports")
                 }
             }
         }

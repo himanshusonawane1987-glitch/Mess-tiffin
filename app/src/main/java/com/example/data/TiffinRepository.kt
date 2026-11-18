@@ -1,24 +1,31 @@
 package com.example.data
 
 import com.example.domain.AdminInvitation
+import com.example.domain.AppLanguage
 import com.example.domain.AuthContextPayload
+import com.example.domain.CustomerDailyMark
 import com.example.domain.CustomerProfile
+import com.example.domain.DailyMarkChoice
 import com.example.domain.DailyMenu
 import com.example.domain.Mess
+import com.example.domain.MessReview
 import com.example.domain.MonthlyBill
 import com.example.domain.Payment
 import com.example.domain.PaymentMethod
 import com.example.domain.Profile
 import com.example.domain.RegistrationRequest
 import com.example.domain.RenewalRequest
+import com.example.domain.SellerRegistrationResult
 import com.example.domain.Subscription
 import com.example.domain.SubscriptionPlan
 import com.example.domain.SubscriptionStatus
+import com.example.domain.TiffinLeave
 import com.example.domain.TiffinRecord
 import com.example.domain.TiffinStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -49,20 +56,268 @@ class TiffinRepository(
         return result
     }
 
+    fun observeLocalLanguage(): Flow<AppLanguage> = sessionStore.observeLanguage()
+
+    fun observeHasChosenLanguage(): Flow<Boolean> = sessionStore.observeHasChosenLanguage()
+
+    suspend fun getLocalLanguage(): AppLanguage = sessionStore.getLanguage()
+
+    suspend fun hasChosenLanguage(): Boolean = sessionStore.hasChosenLanguage()
+
+    suspend fun saveLocalLanguage(language: AppLanguage, markChosen: Boolean = true) {
+        sessionStore.saveLanguage(language, markChosen)
+    }
+
+    suspend fun updateMyLanguage(language: AppLanguage): Result<Profile> {
+        sessionStore.saveLanguage(language, markChosen = true)
+        val params = buildJsonObject {
+            put("p_language", language.dbValue)
+        }.toString()
+        val res = rest.rpc("set_my_language", params, Profile.serializer())
+        res.onSuccess { updatedProfile ->
+            runCatching {
+                val cached = getCachedAuthContext()
+                if (cached != null) {
+                    val updatedCtx = cached.copy(profile = updatedProfile)
+                    sessionStore.saveCachedAuthContext(json.encodeToString(AuthContextPayload.serializer(), updatedCtx))
+                }
+            }
+        }
+        return res
+    }
+
+    suspend fun registerMyMess(
+        messName: String,
+        area: String,
+        city: String,
+        phone: String,
+        vegTypeDb: String,
+        monthlyPrice: Double,
+        lunchTime: String,
+        dinnerTime: String,
+        deliveryAreas: String,
+        description: String
+    ): Result<SellerRegistrationResult> {
+        val params = buildJsonObject {
+            put("p_mess_name", messName.trim())
+            put("p_area", area.trim())
+            put("p_city", city.trim())
+            put("p_phone", phone.trim())
+            put("p_veg_type", vegTypeDb)
+            put("p_monthly_price", monthlyPrice)
+            put("p_lunch_time", lunchTime.trim())
+            put("p_dinner_time", dinnerTime.trim())
+            put("p_delivery_areas", deliveryAreas.trim())
+            put("p_description", description.trim())
+        }.toString()
+        return rest.rpc("register_my_mess", params, SellerRegistrationResult.serializer())
+    }
+
     suspend fun submitCustomerRegistration(
         registrationCode: String,
         fullName: String,
         phone: String,
-        addressOrRoom: String
+        addressOrRoom: String,
+        area: String,
+        city: String
     ): Result<Unit> {
         val params = buildJsonObject {
             put("p_registration_code", registrationCode.trim())
             put("p_full_name", fullName.trim())
             put("p_phone", phone.trim())
             put("p_address_or_room", addressOrRoom.trim())
+            put("p_area", area.trim())
+            put("p_city", city.trim())
         }.toString()
-        return rest.rpc("submit_customer_registration", params, kotlinx.serialization.json.JsonObject.serializer())
+        return rest.rpc("submit_customer_registration", params, JsonObject.serializer())
             .map { }
+    }
+
+    suspend fun submitCustomerRegistrationByMess(
+        messId: String,
+        fullName: String,
+        phone: String,
+        addressOrRoom: String,
+        area: String,
+        city: String
+    ): Result<Unit> {
+        val params = buildJsonObject {
+            put("p_mess_id", messId)
+            put("p_full_name", fullName.trim())
+            put("p_phone", phone.trim())
+            put("p_address_or_room", addressOrRoom.trim())
+            put("p_area", area.trim())
+            put("p_city", city.trim())
+        }.toString()
+        return rest.rpc("submit_customer_registration_by_mess", params, JsonObject.serializer())
+            .map { }
+    }
+
+    private val safeMessColumns =
+        "id,name,owner_id,phone,phone_public,address,area,city,veg_type,monthly_price," +
+            "lunch_time,dinner_time,delivery_areas,description,is_active,avg_rating,rating_count," +
+            "daily_mark_cutoff_time,timezone,currency,meal_slots,default_due_day"
+
+    suspend fun getDiscoverableActiveMesses(
+        todayIso: String
+    ): Result<Pair<List<Mess>, Map<String, DailyMenu>>> {
+        val messesRes = rest.select(
+            table = "messes",
+            queryParams = listOf(
+                "select" to safeMessColumns,
+                "is_active" to "eq.true",
+                "order" to "avg_rating.desc,name.asc"
+            ),
+            deserializer = ListSerializer(Mess.serializer())
+        )
+        if (messesRes.isFailure) return Result.failure(messesRes.exceptionOrNull()!!)
+
+        val menusRes = rest.select(
+            table = "daily_menus",
+            queryParams = listOf(
+                "menu_date" to "eq.$todayIso",
+                "status" to "eq.published"
+            ),
+            deserializer = ListSerializer(DailyMenu.serializer())
+        )
+        val menusByMess = menusRes.getOrDefault(emptyList()).associateBy { it.messId }
+        return Result.success(messesRes.getOrThrow() to menusByMess)
+    }
+
+    suspend fun getMessReviews(messId: String): Result<List<MessReview>> {
+        val params = buildJsonObject {
+            put("p_mess_id", messId)
+        }.toString()
+        return rest.rpc("get_mess_reviews", params, ListSerializer(MessReview.serializer()))
+    }
+
+    suspend fun upsertMessRating(
+        messId: String,
+        customerUserId: String,
+        stars: Int,
+        comment: String
+    ): Result<Unit> {
+        val body = buildJsonObject {
+            put("mess_id", messId)
+            put("customer_id", customerUserId)
+            put("stars", stars.coerceIn(1, 5))
+            put("comment", comment.trim())
+        }.toString()
+        return rest.insert(
+            table = "mess_ratings",
+            bodyJson = body,
+            deserializer = ListSerializer(JsonObject.serializer()),
+            upsertOnConflict = "mess_id,customer_id"
+        ).map { }
+    }
+
+    // ==================== CUSTOMER DAILY MARK & LEAVES ====================
+
+    suspend fun customerMarkTodayTiffin(choice: DailyMarkChoice): Result<CustomerDailyMark> {
+        val params = buildJsonObject {
+            put("p_choice", choice.dbValue)
+        }.toString()
+        return rest.rpc("customer_mark_today_tiffin", params, CustomerDailyMark.serializer())
+    }
+
+    suspend fun getCustomerDailyMarksForRange(
+        customerId: String,
+        startDateIso: String,
+        endDateIso: String
+    ): Result<List<CustomerDailyMark>> {
+        return rest.select(
+            table = "customer_daily_marks",
+            queryParams = listOf(
+                "customer_id" to "eq.$customerId",
+                "service_date" to "gte.$startDateIso",
+                "service_date" to "lte.$endDateIso",
+                "order" to "service_date.desc"
+            ),
+            deserializer = ListSerializer(CustomerDailyMark.serializer())
+        )
+    }
+
+    suspend fun getMessDailyMarksForDate(
+        messId: String,
+        dateIso: String
+    ): Result<List<CustomerDailyMark>> {
+        return rest.select(
+            table = "customer_daily_marks",
+            queryParams = listOf(
+                "mess_id" to "eq.$messId",
+                "service_date" to "eq.$dateIso"
+            ),
+            deserializer = ListSerializer(CustomerDailyMark.serializer())
+        )
+    }
+
+    suspend fun getMessDailyMarksForRange(
+        messId: String,
+        startDateIso: String,
+        endDateIso: String
+    ): Result<List<CustomerDailyMark>> {
+        return rest.select(
+            table = "customer_daily_marks",
+            queryParams = listOf(
+                "mess_id" to "eq.$messId",
+                "service_date" to "gte.$startDateIso",
+                "service_date" to "lte.$endDateIso"
+            ),
+            deserializer = ListSerializer(CustomerDailyMark.serializer())
+        )
+    }
+
+    suspend fun getCustomerLeaves(customerId: String): Result<List<TiffinLeave>> {
+        return rest.select(
+            table = "tiffin_leaves",
+            queryParams = listOf(
+                "customer_id" to "eq.$customerId",
+                "order" to "start_date.desc"
+            ),
+            deserializer = ListSerializer(TiffinLeave.serializer())
+        )
+    }
+
+    suspend fun getMessLeaves(messId: String): Result<List<TiffinLeave>> {
+        return rest.select(
+            table = "tiffin_leaves",
+            queryParams = listOf(
+                "mess_id" to "eq.$messId",
+                "status" to "eq.active",
+                "order" to "start_date.desc"
+            ),
+            deserializer = ListSerializer(TiffinLeave.serializer())
+        )
+    }
+
+    suspend fun createTiffinLeave(
+        messId: String,
+        customerId: String,
+        startDateIso: String,
+        endDateIso: String,
+        reason: String
+    ): Result<TiffinLeave> {
+        val body = buildJsonObject {
+            put("mess_id", messId)
+            put("customer_id", customerId)
+            put("start_date", startDateIso)
+            put("end_date", endDateIso)
+            put("reason", reason.trim())
+            put("status", "active")
+        }.toString()
+        return rest.insert("tiffin_leaves", body, ListSerializer(TiffinLeave.serializer()))
+    }
+
+    suspend fun cancelTiffinLeave(leaveId: String): Result<TiffinLeave> {
+        val body = buildJsonObject {
+            put("status", "cancelled")
+        }.toString()
+        return rest.update(
+            table = "tiffin_leaves",
+            filters = listOf("id" to "eq.$leaveId"),
+            bodyJson = body,
+            deserializer = ListSerializer(TiffinLeave.serializer())
+        ).map { it.first() }
     }
 
     // ==================== CUSTOMER QUERIES & ACTIONS ====================
@@ -172,11 +427,15 @@ class TiffinRepository(
         customerId: String,
         fullName: String,
         phone: String,
-        addressOrRoom: String
+        addressOrRoom: String,
+        area: String,
+        city: String
     ): Result<Unit> {
         val profileBody = buildJsonObject {
             put("full_name", fullName.trim())
             put("phone", phone.trim())
+            put("area", area.trim())
+            put("city", city.trim())
         }.toString()
         val pRes = rest.update("profiles", listOf("id" to "eq.$userId"), profileBody, ListSerializer(Profile.serializer()))
         if (pRes.isFailure) return Result.failure(pRes.exceptionOrNull()!!)
@@ -543,7 +802,8 @@ class TiffinRepository(
         address: String,
         currency: String,
         defaultDueDay: Int,
-        mealSlots: List<String>
+        mealSlots: List<String>,
+        dailyMarkCutoffTime: String = "10:00"
     ): Result<Mess> {
         val body = buildJsonObject {
             put("name", name.trim())
@@ -552,9 +812,14 @@ class TiffinRepository(
             put("currency", currency.trim().uppercase())
             put("default_due_day", defaultDueDay.coerceIn(1, 28))
             put("meal_slots", JsonArray(mealSlots.map { JsonPrimitive(it) }))
+            put("daily_mark_cutoff_time", dailyMarkCutoffTime.trim())
         }.toString()
-        return rest.update("messes", listOf("id" to "eq.$messId"), body, ListSerializer(Mess.serializer()))
-            .map { it.first() }
+        return rest.update(
+            "messes",
+            listOf("id" to "eq.$messId", "select" to safeMessColumns),
+            body,
+            ListSerializer(Mess.serializer())
+        ).map { it.first() }
     }
 
     suspend fun ownerUpdateRegistrationCode(messId: String, newCode: String): Result<Boolean> {

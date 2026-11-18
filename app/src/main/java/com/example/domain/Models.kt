@@ -65,14 +65,58 @@ enum class PaymentStatus {
 }
 
 @Serializable
+enum class VegType(val dbValue: String, val label: String) {
+    @SerialName("veg") VEG("veg", "Veg"),
+    @SerialName("non-veg") NON_VEG("non-veg", "Non-Veg"),
+    @SerialName("both") BOTH("both", "Veg & Non-Veg");
+
+    companion object {
+        fun fromDb(value: String?): VegType = when (value?.lowercase()?.trim()) {
+            "veg" -> VEG
+            "non-veg", "non_veg" -> NON_VEG
+            else -> BOTH
+        }
+    }
+}
+
+@Serializable
+enum class AppLanguage(val dbValue: String, val buttonLabel: String) {
+    @SerialName("en") ENGLISH("en", "English"),
+    @SerialName("hi") HINDI("hi", "हिन्दी"),
+    @SerialName("hinglish") HINGLISH("hinglish", "Hinglish");
+
+    fun toLocale(): java.util.Locale = when (this) {
+        ENGLISH -> java.util.Locale.ENGLISH
+        HINDI -> java.util.Locale.forLanguageTag("hi-IN")
+        HINGLISH -> java.util.Locale.Builder().setLanguage("hi").setScript("Latn").build()
+    }
+
+    companion object {
+        val DEFAULT: AppLanguage = HINGLISH
+
+        fun fromDb(value: String?): AppLanguage = when (value?.lowercase()?.trim()) {
+            "en", "english" -> ENGLISH
+            "hi", "hindi" -> HINDI
+            "hinglish", "hi-latn", "" -> HINGLISH
+            null -> HINGLISH
+            else -> HINGLISH
+        }
+    }
+}
+
+@Serializable
 data class Profile(
     val id: String,
     @SerialName("full_name") val fullName: String = "",
     val email: String = "",
     @SerialName("avatar_url") val avatarUrl: String? = null,
     val phone: String = "",
+    val area: String = "",
+    val city: String = "",
     val role: UserRole = UserRole.CUSTOMER,
     @SerialName("account_status") val accountStatus: AccountStatus = AccountStatus.PENDING,
+    val language: String = AppLanguage.DEFAULT.dbValue,
+    @SerialName("language_set_by_user") val languageSetByUser: Boolean = false,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )
@@ -83,7 +127,20 @@ data class Mess(
     val name: String,
     @SerialName("owner_id") val ownerId: String,
     val phone: String = "",
+    @SerialName("phone_public") val phonePublic: String = "",
     val address: String = "",
+    val area: String = "",
+    val city: String = "",
+    @SerialName("veg_type") val vegType: String = "both",
+    @SerialName("monthly_price") val monthlyPrice: Double? = null,
+    @SerialName("lunch_time") val lunchTime: String = "",
+    @SerialName("dinner_time") val dinnerTime: String = "",
+    @SerialName("delivery_areas") val deliveryAreas: String = "",
+    val description: String = "",
+    @SerialName("is_active") val isActive: Boolean = true,
+    @SerialName("avg_rating") val avgRating: Double = 0.0,
+    @SerialName("rating_count") val ratingCount: Int = 0,
+    @SerialName("daily_mark_cutoff_time") val dailyMarkCutoffTime: String = "10:00",
     val timezone: String = "Asia/Kolkata",
     val currency: String = "INR",
     @SerialName("meal_slots") val mealSlots: List<String> = listOf("lunch", "dinner"),
@@ -248,4 +305,106 @@ data class AuthContextPayload(
     val mess: Mess? = null,
     @SerialName("customer_profile") val customerProfile: CustomerProfile? = null,
     @SerialName("registration_request") val registrationRequest: RegistrationRequest? = null
+)
+
+@Serializable
+data class SellerRegistrationResult(
+    @SerialName("mess_id") val messId: String,
+    @SerialName("mess_name") val messName: String,
+    @SerialName("registration_code") val registrationCode: String
+)
+
+@Serializable
+data class MessReview(
+    val id: String,
+    @SerialName("mess_id") val messId: String,
+    @SerialName("customer_id") val customerId: String,
+    @SerialName("reviewer_name") val reviewerName: String = "Customer",
+    val stars: Int,
+    val comment: String = "",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
+)
+
+enum class ProximityTier(val rank: Int, val label: String) {
+    SAME_AREA_AND_CITY(0, "Near You"),
+    SAME_CITY(1, "In Your City"),
+    OTHER(2, "Other Areas")
+}
+
+data class DiscoverableMess(
+    val mess: Mess,
+    val todayMenu: DailyMenu? = null,
+    val proximityTier: ProximityTier = ProximityTier.OTHER
+)
+
+data class DiscoveryJoinPrefill(
+    val messId: String,
+    val messName: String,
+    val area: String,
+    val city: String
+) {
+    val autoFilledCodeSlot: String
+        get() = "PREVERIFIED:$messName"
+}
+
+@Serializable
+enum class DailyMarkChoice(val dbValue: String, val label: String) {
+    @SerialName("wanted") WANTED("wanted", "Tiffin Chahiye"),
+    @SerialName("not_wanted") NOT_WANTED("not_wanted", "Nahi Chahiye")
+}
+
+@Serializable
+data class CustomerDailyMark(
+    val id: String,
+    @SerialName("mess_id") val messId: String,
+    @SerialName("customer_id") val customerId: String,
+    @SerialName("service_date") val serviceDate: String,
+    val choice: DailyMarkChoice,
+    @SerialName("marked_at") val markedAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
+)
+
+@Serializable
+enum class LeaveStatus(val dbValue: String) {
+    @SerialName("active") ACTIVE("active"),
+    @SerialName("cancelled") CANCELLED("cancelled")
+}
+
+@Serializable
+data class TiffinLeave(
+    val id: String,
+    @SerialName("mess_id") val messId: String,
+    @SerialName("customer_id") val customerId: String,
+    @SerialName("start_date") val startDate: String,
+    @SerialName("end_date") val endDate: String,
+    val reason: String = "",
+    val status: LeaveStatus = LeaveStatus.ACTIVE,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+enum class AdminCustomerMarkStatus(val label: String) {
+    WANTED("Tiffin Chahiye"),
+    NOT_WANTED("Nahi Chahiye"),
+    ON_LEAVE("On Leave"),
+    NOT_MARKED("Not Marked Yet")
+}
+
+data class AdminDailyCustomerSummary(
+    val customerId: String,
+    val markStatus: AdminCustomerMarkStatus,
+    val activeLeave: TiffinLeave? = null,
+    val monthDeliveredCount: Int = 0,
+    val perTiffinRate: Double = 0.0,
+    val monthAmount: Double = 0.0
+)
+
+data class AdminDayTotals(
+    val wantedCount: Int = 0,
+    val notWantedCount: Int = 0,
+    val onLeaveCount: Int = 0,
+    val notMarkedCount: Int = 0,
+    val deliveredTodayCount: Int = 0,
+    val deliveredTodayAmount: Double = 0.0,
+    val wantedTodayAmount: Double = 0.0
 )

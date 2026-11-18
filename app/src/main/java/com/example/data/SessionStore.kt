@@ -3,10 +3,13 @@ package com.example.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.domain.AppLanguage
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -31,6 +34,8 @@ class SessionStore(private val context: Context) {
         val PKCE_VERIFIER = stringPreferencesKey("pkce_code_verifier")
         val CACHED_AUTH_CONTEXT = stringPreferencesKey("cached_auth_context_json")
         val CACHED_MENUS = stringPreferencesKey("cached_menus_json")
+        val APP_LANGUAGE = stringPreferencesKey("app_language")
+        val LANGUAGE_CHOSEN = booleanPreferencesKey("language_chosen_by_user")
     }
 
     suspend fun saveSession(session: StoredSession) {
@@ -97,7 +102,50 @@ class SessionStore(private val context: Context) {
         return context.tiffinDataStore.data.map { it[Keys.CACHED_MENUS] }.first()
     }
 
+    suspend fun saveLanguage(language: AppLanguage, markChosen: Boolean = true) {
+        context.tiffinDataStore.edit { prefs ->
+            prefs[Keys.APP_LANGUAGE] = language.dbValue
+            if (markChosen) {
+                prefs[Keys.LANGUAGE_CHOSEN] = true
+            }
+        }
+    }
+
+    suspend fun getLanguage(): AppLanguage {
+        val raw = context.tiffinDataStore.data.map { it[Keys.APP_LANGUAGE] }.first()
+        return AppLanguage.fromDb(raw)
+    }
+
+    suspend fun hasChosenLanguage(): Boolean {
+        return context.tiffinDataStore.data.map { it[Keys.LANGUAGE_CHOSEN] ?: false }.first()
+    }
+
+    fun observeLanguage(): Flow<AppLanguage> {
+        return context.tiffinDataStore.data.map { prefs ->
+            AppLanguage.fromDb(prefs[Keys.APP_LANGUAGE])
+        }
+    }
+
+    fun observeHasChosenLanguage(): Flow<Boolean> {
+        return context.tiffinDataStore.data.map { prefs ->
+            prefs[Keys.LANGUAGE_CHOSEN] ?: false
+        }
+    }
+
     suspend fun clearAll() {
-        context.tiffinDataStore.edit { it.clear() }
+        context.tiffinDataStore.edit { prefs ->
+            val savedLang = prefs[Keys.APP_LANGUAGE]
+            val savedChosen = prefs[Keys.LANGUAGE_CHOSEN]
+            prefs.clear()
+            if (!savedLang.isNullOrBlank()) prefs[Keys.APP_LANGUAGE] = savedLang
+            if (savedChosen != null) prefs[Keys.LANGUAGE_CHOSEN] = savedChosen
+        }
+    }
+
+    suspend fun clearLanguageForTesting() {
+        context.tiffinDataStore.edit { prefs ->
+            prefs.remove(Keys.APP_LANGUAGE)
+            prefs.remove(Keys.LANGUAGE_CHOSEN)
+        }
     }
 }

@@ -21,15 +21,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import com.example.R
+import com.example.domain.AppLanguage
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -363,5 +369,118 @@ fun MetricValueCard(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+@Composable
+fun LanguagePickerButtons(
+    selectedLanguage: AppLanguage,
+    onSelectLanguage: (AppLanguage) -> Unit,
+    highlightSelected: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AppLanguage.entries.forEach { lang ->
+            val selected = highlightSelected && selectedLanguage == lang
+            val label = when (lang) {
+                AppLanguage.ENGLISH -> lStr(R.string.lang_en)
+                AppLanguage.HINDI -> lStr(R.string.lang_hi)
+                AppLanguage.HINGLISH -> lStr(R.string.lang_hinglish)
+            }
+            if (selected) {
+                Button(
+                    onClick = { onSelectLanguage(lang) },
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SkyPrimary,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp)
+                        .minimumInteractiveComponentSize()
+                        .testTag("language_button_${lang.dbValue}")
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { onSelectLanguage(lang) },
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    border = BorderStroke(1.2.dp, SkySecondary.copy(alpha = 0.65f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp)
+                        .minimumInteractiveComponentSize()
+                        .testTag("language_button_${lang.dbValue}")
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DeepBlueText,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LanguageSettingsCard(
+    selectedLanguage: AppLanguage,
+    onSelectLanguage: (AppLanguage) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    GlassCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("settings_language_card"),
+        strongSurface = true
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Language,
+                contentDescription = null,
+                tint = SkyPrimary,
+                modifier = Modifier.size(22.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${lStr(R.string.lang_settings_title)} • ${lStr(R.string.lang_settings_label)}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = DeepBlueText
+                )
+                Text(
+                    text = lStr(R.string.lang_settings_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SecondaryText
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        LanguagePickerButtons(
+            selectedLanguage = selectedLanguage,
+            onSelectLanguage = onSelectLanguage,
+            highlightSelected = true
+        )
     }
 }

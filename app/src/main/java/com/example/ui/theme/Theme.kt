@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.domain.AppLanguage
 
 private val TiffinLightColorScheme = lightColorScheme(
     primary = SkyPrimary,
@@ -42,12 +43,15 @@ val TiffinShapes = Shapes(
 
 @Composable
 fun TiffinMessTheme(
+    language: AppLanguage = AppLanguage.DEFAULT,
     content: @Composable () -> Unit
 ) {
-    MaterialTheme(
-        colorScheme = TiffinLightColorScheme,
-        typography = TiffinTypography,
-        shapes = TiffinShapes,
-        content = content
-    )
+    ProvideAppLanguage(language = language) {
+        MaterialTheme(
+            colorScheme = TiffinLightColorScheme,
+            typography = TiffinTypography,
+            shapes = TiffinShapes,
+            content = content
+        )
+    }
 }

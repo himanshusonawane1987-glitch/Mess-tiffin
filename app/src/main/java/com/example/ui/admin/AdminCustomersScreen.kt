@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.example.domain.AccountStatus
 import com.example.domain.CustomerProfile
 import com.example.domain.SubscriptionStatus
@@ -57,6 +58,8 @@ import com.example.ui.theme.SkyPrimary
 import com.example.ui.theme.SkyPrimaryButton
 import com.example.ui.theme.StatusPill
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.lStr
+import com.example.ui.theme.localizedLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,10 +70,12 @@ fun AdminCustomersScreen(
     onUpdateCustomerDetails: (customerId: String, name: String, phone: String, address: String) -> Unit,
     onUpdateCustomerStatus: (customerId: String, status: String) -> Unit,
     onOpenBillingForCustomer: () -> Unit,
-    onOpenSubscriptionsForCustomer: () -> Unit
+    onOpenSubscriptionsForCustomer: () -> Unit,
+    onCreateLeave: (customerId: String, startDateIso: String, endDateIso: String, reason: String) -> Unit = { _, _, _, _ -> },
+    onCancelLeave: (leaveId: String) -> Unit = {}
 ) {
     var search by remember { mutableStateOf("") }
-    var filter by remember { mutableStateOf("All") } // All, Active, Pending, Expired
+    var filter by remember { mutableStateOf("ALL") }
     var sortByDue by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedCustomer by remember { mutableStateOf<CustomerProfile?>(null) }
@@ -91,9 +96,9 @@ fun AdminCustomersScreen(
                     c.phone.contains(search, ignoreCase = true)
                 val sub = subByCustomer[c.id]
                 val matchesFilter = when (filter) {
-                    "Active" -> c.customerStatus == AccountStatus.ACTIVE
-                    "Expired" -> sub?.status == SubscriptionStatus.EXPIRED
-                    "Suspended" -> c.customerStatus == AccountStatus.SUSPENDED
+                    "ACTIVE" -> c.customerStatus == AccountStatus.ACTIVE
+                    "EXPIRED" -> sub?.status == SubscriptionStatus.EXPIRED
+                    "SUSPENDED" -> c.customerStatus == AccountStatus.SUSPENDED
                     else -> true
                 }
                 matchesQuery && matchesFilter
@@ -113,7 +118,7 @@ fun AdminCustomersScreen(
                 contentColor = Color.White,
                 modifier = Modifier.padding(bottom = 84.dp).testTag("add_customer_fab")
             ) {
-                Icon(Icons.Outlined.PersonAdd, contentDescription = "Add Customer")
+                Icon(Icons.Outlined.PersonAdd, contentDescription = lStr(R.string.add_customer_cd))
             }
         }
     ) { _ ->
@@ -123,8 +128,8 @@ fun AdminCustomersScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Text("Customers", style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
-                Text("${state.customers.size} registered in ${state.mess.name}", style = MaterialTheme.typography.bodyMedium)
+                Text(lStr(R.string.qa_customers), style = MaterialTheme.typography.headlineMedium, color = DeepBlueText)
+                Text(lStr(R.string.customers_sub, state.customers.size), style = MaterialTheme.typography.bodyMedium, color = SecondaryText)
             }
 
             if (!state.errorMessage.isNullOrBlank()) {
@@ -138,12 +143,11 @@ fun AdminCustomersScreen(
                 }
             }
 
-            // Search + Filter
             item {
                 OutlinedTextField(
                     value = search,
                     onValueChange = { search = it },
-                    placeholder = { Text("Search name or mobile...") },
+                    placeholder = { Text(lStr(R.string.search_customers_hint)) },
                     leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("customer_search_input")
@@ -153,11 +157,16 @@ fun AdminCustomersScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf("All", "Active", "Pending", "Expired").forEach { tab ->
+                    listOf(
+                        "ALL" to lStr(R.string.filter_all),
+                        "ACTIVE" to lStr(R.string.status_active),
+                        "PENDING" to lStr(R.string.status_pending),
+                        "EXPIRED" to lStr(R.string.sub_expired)
+                    ).forEach { (key, label) ->
                         FilterChip(
-                            selected = filter == tab,
-                            onClick = { filter = tab },
-                            label = { Text(tab) }
+                            selected = filter == key,
+                            onClick = { filter = key },
+                            label = { Text(label) }
                         )
                     }
                 }
@@ -165,22 +174,21 @@ fun AdminCustomersScreen(
                     FilterChip(
                         selected = !sortByDue,
                         onClick = { sortByDue = false },
-                        label = { Text("Sort: Name") }
+                        label = { Text(lStr(R.string.sort_name)) }
                     )
                     FilterChip(
                         selected = sortByDue,
                         onClick = { sortByDue = true },
-                        label = { Text("Sort: Balance Due") }
+                        label = { Text(lStr(R.string.sort_balance_due)) }
                     )
                 }
             }
 
-            // Pending Requests section
-            if (filter == "All" || filter == "Pending") {
+            if (filter == "ALL" || filter == "PENDING") {
                 if (state.pendingRequests.isNotEmpty()) {
                     item {
                         Text(
-                            "Pending Registration Requests (${state.pendingRequests.size})",
+                            text = lStr(R.string.new_join_requests_title, state.pendingRequests.size),
                             style = MaterialTheme.typography.titleLarge,
                             color = DeepBlueText
                         )
@@ -194,14 +202,14 @@ fun AdminCustomersScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(req.requestedName, style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
-                                    Text("${req.phone} • ${req.addressOrRoom.ifBlank { "No room/address" }}", style = MaterialTheme.typography.bodyMedium)
+                                    Text("${req.phone} • ${req.addressOrRoom.ifBlank { lStr(R.string.no_room_address) }}", style = MaterialTheme.typography.bodyMedium)
                                 }
-                                StatusPill(label = "Pending", tone = PillTone.WARNING)
+                                StatusPill(label = lStr(R.string.status_pending), tone = PillTone.WARNING)
                             }
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SkyPrimaryButton(
-                                    text = "Approve",
+                                    text = lStr(R.string.approve_btn),
                                     icon = Icons.Outlined.Check,
                                     onClick = { onReviewRequest(req.id, true) },
                                     loading = state.isActionBusy,
@@ -213,7 +221,7 @@ fun AdminCustomersScreen(
                                 ) {
                                     Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("Reject")
+                                    Text(lStr(R.string.reject_btn))
                                 }
                             }
                         }
@@ -221,11 +229,11 @@ fun AdminCustomersScreen(
                 }
             }
 
-            if (filter != "Pending") {
+            if (filter != "PENDING") {
                 if (filteredCustomers.isEmpty()) {
                     item {
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            Text("No customers match this filter.", style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
+                            Text(lStr(R.string.no_customers_match), style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
                         }
                     }
                 } else {
@@ -234,6 +242,8 @@ fun AdminCustomersScreen(
                         val sub = subByCustomer[cust.id]
                         val todayRecs = state.dailyTiffins.filter { it.customerId == cust.id && it.serviceDate == todayIso }
                         val deliveredCountToday = todayRecs.count { it.status == TiffinStatus.DELIVERED }
+                        val custSummary = state.dailyCustomerSummaries[cust.id]
+                        val activeLeaveToday = custSummary?.activeLeave
                         GlassCard(
                             modifier = Modifier.fillMaxWidth(),
                             strongSurface = true,
@@ -255,8 +265,12 @@ fun AdminCustomersScreen(
                                     )
                                 }
                                 StatusPill(
-                                    label = cust.customerStatus.name.lowercase().replaceFirstChar { it.uppercase() },
-                                    tone = if (cust.customerStatus == AccountStatus.ACTIVE) PillTone.SUCCESS else PillTone.ERROR
+                                    label = if (activeLeaveToday != null) lStr(R.string.daily_on_leave_label) else cust.customerStatus.localizedLabel(),
+                                    tone = when {
+                                        activeLeaveToday != null -> PillTone.WARNING
+                                        cust.customerStatus == AccountStatus.ACTIVE -> PillTone.SUCCESS
+                                        else -> PillTone.ERROR
+                                    }
                                 )
                             }
                             Spacer(Modifier.height(8.dp))
@@ -265,12 +279,12 @@ fun AdminCustomersScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = sub?.let { "${it.planNameSnapshot} (${it.status.name.lowercase()})" } ?: "No plan assigned",
+                                    text = if (sub != null) "${sub.planNameSnapshot} (${sub.status.localizedLabel()})" else lStr(R.string.no_plan_assigned),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = SecondaryText
                                 )
                                 Text(
-                                    text = "Today: $deliveredCountToday delivered",
+                                    text = lStr(R.string.today_delivered_count, deliveredCountToday),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = if (deliveredCountToday > 0) SuccessGreen else SecondaryText
                                 )
@@ -278,7 +292,7 @@ fun AdminCustomersScreen(
                             if (due > 0) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = "Outstanding: ${TiffinBusinessLogic.formatCurrency(due, state.mess.currency)}",
+                                    text = lStr(R.string.due_colon, TiffinBusinessLogic.formatCurrency(due, state.mess.currency)),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = ErrorCoral
                                 )
@@ -298,24 +312,24 @@ fun AdminCustomersScreen(
 
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("Add Customer") },
+            title = { Text(lStr(R.string.add_customer_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Full Name *") }, singleLine = true)
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(lStr(R.string.field_full_name_req)) }, singleLine = true)
                     OutlinedTextField(
                         value = phone,
                         onValueChange = { phone = it },
-                        label = { Text("Mobile Number *") },
+                        label = { Text(lStr(R.string.field_mobile_req)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it },
-                        label = { Text("Google Email (to auto-link on Sign-In)") },
+                        label = { Text(lStr(R.string.google_email_opt)) },
                         singleLine = true
                     )
-                    OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Room / Address (optional)") }, singleLine = true)
+                    OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text(lStr(R.string.field_room_opt)) }, singleLine = true)
                 }
             },
             confirmButton = {
@@ -324,10 +338,10 @@ fun AdminCustomersScreen(
                         showAddDialog = false
                         onCreateCustomer(name, phone, email, address)
                     }
-                ) { Text("Add Customer") }
+                ) { Text(lStr(R.string.add_customer_title)) }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showAddDialog = false }) { Text(lStr(R.string.action_cancel)) }
             }
         )
     }
@@ -337,26 +351,35 @@ fun AdminCustomersScreen(
         var editName by remember(cust.id) { mutableStateOf(cust.fullName) }
         var editPhone by remember(cust.id) { mutableStateOf(cust.phone) }
         var editAddr by remember(cust.id) { mutableStateOf(cust.addressOrRoom) }
-        val custTiffinsCount = state.monthTiffins.count { it.customerId == cust.id && it.status == TiffinStatus.DELIVERED }
+        var leaveStart by remember(cust.id) { mutableStateOf(todayIso) }
+        var leaveEnd by remember(cust.id) { mutableStateOf(todayIso) }
+        var leaveReason by remember(cust.id) { mutableStateOf("") }
+        val custSummary = state.dailyCustomerSummaries[cust.id]
+        val custTiffinsCount = custSummary?.monthDeliveredCount ?: 0
         val custDue = dueByCustomer[cust.id] ?: 0.0
+        val custLeaves = state.leaves.filter { it.customerId == cust.id && it.endDate >= todayIso }
 
         ModalBottomSheet(onDismissRequest = { selectedCustomer = null }) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("Customer Detail — ${cust.fullName}", style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
+                Text(lStr(R.string.customer_detail_title, cust.fullName), style = MaterialTheme.typography.titleLarge, color = DeepBlueText)
                 Text(
-                    "Delivered this month: $custTiffinsCount • Balance Due: ${TiffinBusinessLogic.formatCurrency(custDue, state.mess.currency)}",
+                    text = lStr(
+                        R.string.customer_detail_stats,
+                        custTiffinsCount,
+                        TiffinBusinessLogic.formatCurrency(custDue, state.mess.currency)
+                    ),
                     style = MaterialTheme.typography.bodyMedium
                 )
-                OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = editPhone, onValueChange = { editPhone = it }, label = { Text("Mobile") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = editAddr, onValueChange = { editAddr = it }, label = { Text("Room / Address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text(lStr(R.string.field_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = editPhone, onValueChange = { editPhone = it }, label = { Text(lStr(R.string.field_mobile_short)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = editAddr, onValueChange = { editAddr = it }, label = { Text(lStr(R.string.field_room_addr)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SkyPrimaryButton(
-                        text = "Save Details",
+                        text = lStr(R.string.save_details_btn),
                         onClick = {
                             onUpdateCustomerDetails(cust.id, editName, editPhone, editAddr)
                             selectedCustomer = null
@@ -371,7 +394,7 @@ fun AdminCustomersScreen(
                         },
                         modifier = Modifier.weight(1f).height(50.dp)
                     ) {
-                        Text(if (cust.customerStatus == AccountStatus.ACTIVE) "Suspend" else "Activate")
+                        Text(if (cust.customerStatus == AccountStatus.ACTIVE) lStr(R.string.suspend_btn) else lStr(R.string.activate_btn))
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -381,14 +404,64 @@ fun AdminCustomersScreen(
                             onOpenSubscriptionsForCustomer()
                         },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Assign Plan") }
+                    ) { Text(lStr(R.string.assign_plan_btn)) }
                     OutlinedButton(
                         onClick = {
                             selectedCustomer = null
                             onOpenBillingForCustomer()
                         },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Bills & Payments") }
+                    ) { Text(lStr(R.string.qa_bills_payments)) }
+                }
+                Text(lStr(R.string.leave_card_title), style = MaterialTheme.typography.titleMedium, color = DeepBlueText)
+                custLeaves.forEach { lv ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(lStr(R.string.date_range_to, lv.startDate, lv.endDate), style = MaterialTheme.typography.bodyMedium)
+                        TextButton(
+                            onClick = {
+                                onCancelLeave(lv.id)
+                                selectedCustomer = null
+                            }
+                        ) { Text(lStr(R.string.cancel_leave_btn), color = ErrorCoral) }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = leaveStart,
+                        onValueChange = { leaveStart = it },
+                        label = { Text(lStr(R.string.start_short)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = leaveEnd,
+                        onValueChange = { leaveEnd = it },
+                        label = { Text(lStr(R.string.end_short)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = leaveReason,
+                        onValueChange = { leaveReason = it },
+                        label = { Text(lStr(R.string.reason_opt)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            onCreateLeave(cust.id, leaveStart, leaveEnd, leaveReason)
+                            selectedCustomer = null
+                        }
+                    ) { Text(lStr(R.string.add_leave_btn)) }
                 }
                 Spacer(Modifier.height(16.dp))
             }
